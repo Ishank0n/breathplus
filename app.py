@@ -801,6 +801,252 @@ def user_summary(user_id):
     )
 
 
+#Different breathing technique pages:
+
+import math as _math
+from decimal import Decimal as _Decimal
+import json as _json
+
+
+BREATH_PHASES = ("inhale", "hold_in", "exhale", "hold_out")
+MAX_READINGS_PER_REQUEST = 200
+MAX_SENSOR_FIELDS = 20
+
+
+def _phase_at_elapsed(phases, elapsed_ms):
+    """Return the guided phase expected at a session-relative time."""
+    cycle_ms = sum(float(p["duration_sec"]) for p in phases) * 1000
+    if cycle_ms <= 0:
+        raise ApiError(409, "The session has no valid breathing cycle.")
+
+    position = elapsed_ms % cycle_ms
+    for phase in phases:
+        duration_ms = float(phase["duration_sec"]) * 1000
+        if position < duration_ms:
+            return phase["phase"]
+        position -= duration_ms
+    return phases[-1]["phase"]
+
+
+def _clean_band_reading(item, index):
+    if not isinstance(item, dict):
+        raise ApiError(400, f"readings[{index}] must be an object.")
+
+    elapsed_ms = item.get("elapsed_ms")
+    if isinstance(elapsed_ms, bool) or not isinstance(elapsed_ms, int):
+        raise ApiError(400, f"readings[{index}].elapsed_ms must be an integer.")
+    if not 0 <= elapsed_ms <= MAX_SESSION_SEC * 1000:
+        raise ApiError(400, f"readings[{index}].elapsed_ms is outside the session limit.")
+
+    detected_phase = item.get("detected_phase")
+    if detected_phase is not None and detected_phase not in BREATH_PHASES:
+        raise ApiError(
+            400,
+            f"readings[{index}].detected_phase must be one of: {', '.join(BREATH_PHASES)}.",
+        )
+
+    confidence = item.get("confidence")
+    if confidence is not None:
+        if (isinstance(confidence, bool) or
+                not isinstance(confidence, (int, float)) or
+                not _math.isfinite(confidence) or not 0 <= confidence <= 1):
+            raise ApiError(f"readings[{index}].confidence must be a number from 0 to 1.")
+        confidence = round(float(confidence), 4)
+
+    sensors = item.get("sensors", {})
+    if not isinstance(sensors, dict) or len(sensors) > MAX_SENSOR_FIELDS:
+        raise ApiError(
+            f"readings[{index}].sensors must be an object with at most {MAX_SENSOR_FIELDS} fields."
+        )
+
+    clean_sensors = {}
+    for key, value in sensors.items():
+        if not isinstance(key, str) or not key or len(key) > 40:
+            raise ApiError(f"readings[{index}] contains an invalid sensor field name.")
+        if (isinstance(value, bool) or not isinstance(value, (int, float)) or
+                not _math.isfinite(value)):
+            raise ApiError(f"readings[{index}].sensors.{key} must be a finite number.")
+        clean_sensors[key] = float(value)
+
+    return {
+        "elapsed_ms": elapsed_ms,
+        "detected_phase": detected_phase,
+        "confidence": confidence,
+        "sensors": clean_sensors,
+    }
+
+
+@app.post("/api/users/<user_id>/sessions/<session_id>/readings")
+def receive_band_readings(user_id, session_id):
+    """
+    Receive a batch of decoded BLE readings.
+
+    Example body:
+    {
+      "readings": [
+        {
+          "elapsed_ms": 1200,
+          "detected_phase": "inhale",
+          "confidence": 0.91,
+          "sensors": {"motion_x": 0.12, "motion_y": -0.03, "pulse_bpm": 72}
+        }
+      ]
+    }
+
+    `detected_phase` must be produced by the ESP32 firmware or by the
+    browser's signal-processing code. Raw sensor values alone are not enough
+    for this API to infer inhale/exhale reliably.
+    """
+    data = json_body()
+    raw_readings = data.get("readings")
+    if not isinstance(raw_readings, list) or not 1 <= len(raw_readings) <= MAX_READINGS_PER_REQUEST:
+        raise ApiError(
+            400, f"'readings' must be a list containing 1 to {MAX_READINGS_PER_REQUEST} items."
+        )
+
+    readings = [_clean_band_reading(item, i) for i, item in enumerate(raw_readings)]
+    if any(
+        readings[i]["elapsed_ms"] <= readings[i - 1]["elapsed_ms"]
+        for i in range(1, len(readings))
+    ):
+        raise ApiError(400, "readings must have strictly increasing elapsed_ms values.")
+
+    conn = db()
+    cur = conn.cursor()
+    user = fetch_user(cur, user_id)
+    session = fetch_session(cur, user, session_id, for_update=True)
+    if session["status"] != "in_progress":
+        raise ApiError(409, "Band readings can only be added to an in-progress session.")
+
+    phases = session["phase_snapshot"]
+    if isinstance(phases, (str, bytes)):
+        phases = _json.loads(phases)
+
+    rows = []
+    for reading in readings:
+        expected = _phase_at_elapsed(phases, reading["elapsed_ms"])
+        detected = reading["detected_phase"]
+        matched = int(detected is not None and detected == expected)
+        rows.append((
+            session["id"],
+            reading["elapsed_ms"],
+            detected,
+            reading["confidence"],
+            _json.dumps(reading["sensors"], separators=(",", ":")),
+            expected,
+            matched,
+        ))
+
+    # INSERT IGNORE makes retries safe: a sample is unique per session/time.
+    cur.executemany(
+        """
+        INSERT IGNORE INTO breathing_session_readings
+            (session_id, elapsed_ms, detected_phase, confidence,
+             sensor_data, expected_phase, phase_matched)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        rows,
+    )
+    inserted = cur.rowcount
+
+    cur.execute(
+        """
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(phase_matched), 0) AS matched,
+               MAX(elapsed_ms) AS latest_elapsed_ms
+        FROM breathing_session_readings
+        WHERE session_id = %s AND detected_phase IS NOT NULL
+        """,
+        (session["id"],),
+    )
+    stats = cur.fetchone()
+    total = stats["total"]
+    accuracy = round((stats["matched"] / total) * 100, 2) if total else None
+
+    updates = []
+    params = []
+    if accuracy is not None:
+        updates.append("accuracy_pct = %s")
+        params.append(accuracy)
+    if stats["latest_elapsed_ms"] is not None:
+        updates.append("elapsed_sec = GREATEST(elapsed_sec, %s)")
+        params.append(int(stats["latest_elapsed_ms"] // 1000))
+    if updates:
+        cur.execute(
+            f"UPDATE breathing_sessions SET {', '.join(updates)} WHERE id = %s",
+            (*params, session["id"]),
+        )
+
+    conn.commit()
+    return jsonify(
+        accepted=inserted,
+        duplicates=len(readings) - inserted,
+        accuracy_pct=accuracy,
+        samples_compared=total,
+        samples_matched=stats["matched"],
+        latest_elapsed_ms=stats["latest_elapsed_ms"],
+    ), 202
+
+
+@app.get("/api/users/<user_id>/sessions/<session_id>/live")
+def get_live_session_state(user_id, session_id):
+    """Data needed to refresh the live exercise screen."""
+    cur = db().cursor()
+    user = fetch_user(cur, user_id)
+    session = fetch_session(cur, user, session_id)
+
+    cur.execute(
+        """
+        SELECT elapsed_ms, detected_phase, confidence, sensor_data,
+               expected_phase, received_at
+        FROM breathing_session_readings
+        WHERE session_id = %s
+        ORDER BY elapsed_ms DESC
+        LIMIT 1
+        """,
+        (session["id"],),
+    )
+    latest = cur.fetchone()
+
+    cur.execute(
+        """
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(phase_matched), 0) AS matched
+        FROM breathing_session_readings
+        WHERE session_id = %s AND detected_phase IS NOT NULL
+        """,
+        (session["id"],),
+    )
+    stats = cur.fetchone()
+    accuracy = round(stats["matched"] / stats["total"] * 100, 2) if stats["total"] else None
+
+    if latest:
+        sensor_data = latest["sensor_data"]
+        if isinstance(sensor_data, (str, bytes)):
+            sensor_data = _json.loads(sensor_data)
+        latest_json = {
+            "elapsed_ms": latest["elapsed_ms"],
+            "detected_phase": latest["detected_phase"],
+            "expected_phase": latest["expected_phase"],
+            "confidence": float(latest["confidence"]) if latest["confidence"] is not None else None,
+            "sensors": sensor_data,
+            "received_at": iso(latest["received_at"]),
+        }
+    else:
+        latest_json = None
+
+    return jsonify(
+        session=session_json(session),
+        band={
+            "connected": latest is not None,
+            "latest_reading": latest_json,
+            "samples_compared": stats["total"],
+            "samples_matched": stats["matched"],
+            "accuracy_pct": accuracy,
+        },
+    )
+
+
 if __name__ == "__main__":
     app.run(
         host=os.environ.get("HOST", "127.0.0.1"),
