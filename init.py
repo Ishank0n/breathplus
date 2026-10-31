@@ -114,6 +114,29 @@ TABLES = [
         ) {TABLE_OPTIONS}
         """,
     ),
+    (
+        "breathing_session_readings",
+        f"""
+        CREATE TABLE IF NOT EXISTS breathing_session_readings (
+            id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            session_id      BIGINT UNSIGNED NOT NULL,
+            elapsed_ms      INT UNSIGNED NOT NULL,
+            detected_phase  ENUM('inhale', 'hold_in', 'exhale', 'hold_out') NULL,
+            confidence      DECIMAL(5,4) NULL,
+            sensor_data     JSON NOT NULL,
+            expected_phase  ENUM('inhale', 'hold_in', 'exhale', 'hold_out') NOT NULL,
+            phase_matched   TINYINT(1) NOT NULL DEFAULT 0,
+            received_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_session_elapsed (session_id, elapsed_ms),
+            KEY idx_readings_session_time (session_id, elapsed_ms),
+            CONSTRAINT fk_readings_session FOREIGN KEY (session_id)
+                REFERENCES breathing_sessions (id) ON DELETE CASCADE,
+            CONSTRAINT chk_reading_confidence
+                CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1))
+        ) {TABLE_OPTIONS}
+        """,
+    ),
+
 ]
 
 # The five techniques on the home screen. Phase durations are in seconds.
