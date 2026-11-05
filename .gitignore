@@ -1,3 +1,4 @@
+
 # Miscellaneous
 *.class
 *.log
@@ -46,3 +47,9 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+.env
+certs/
+__pycache__/
+.venv/
+ c1c862a67d7bb147b44c149dd4bab77bcf5f52ba
