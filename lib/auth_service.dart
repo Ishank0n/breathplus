@@ -18,6 +18,12 @@ class AuthException implements Exception {
 }
 
 class AuthService {
+  // One shared instance for the whole app: `AuthService()` always returns it,
+  // so main.dart and breathe_api.dart use the same tokens and refresh lock.
+  AuthService._();
+  static final AuthService instance = AuthService._();
+  factory AuthService() => instance;
+
   // Cloudflare quick-tunnel address. It changes whenever cloudflared restarts:
   // if the app suddenly can't connect, update this line and rebuild.
   static const _apiBase = 'https://hope-trains-licensed-prospective.trycloudflare.com';
@@ -82,6 +88,9 @@ class AuthService {
     }
     await _saveTokens(jsonDecode(res.body) as Map<String, dynamic>);
   }
+
+  /// Current access token (null when signed out). Used by breathe_api.dart.
+  Future<String?> get accessToken => _storage.read(key: _kAccess);
 
   /// The signed-in user's id, used as <user_id> in /api/users/<user_id>/... calls.
   /// If it was never saved (e.g. older login), it is fetched from /api/me once.

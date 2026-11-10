@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 // Re-uses Pressable, kSerif and kSerifFallback from main.dart
 import 'main.dart';
+import 'stats_repository.dart';
 
 /// ---------------------------------------------------------------------------
 /// THEME (Statistics uses a teal palette)
@@ -23,128 +25,33 @@ class StatsColors {
 }
 
 /// ---------------------------------------------------------------------------
-/// PLACEHOLDER DATA  (replace with real data / state management)
+/// CHART SERIES (normalised 0..1, NaN = no data)
 /// ---------------------------------------------------------------------------
-enum StatsPeriod { day, week, month, year }
-
-extension StatsPeriodX on StatsPeriod {
-  String get label {
-    switch (this) {
-      case StatsPeriod.day:
-        return 'Day';
-      case StatsPeriod.week:
-        return 'Week';
-      case StatsPeriod.month:
-        return 'Month';
-      case StatsPeriod.year:
-        return 'Year';
-    }
+List<double> _normLine(List<double?> v, double minSpan) {
+  final vals = v.whereType<double>();
+  if (vals.isEmpty) return List.filled(v.length, double.nan);
+  var lo = vals.reduce(math.min);
+  var hi = vals.reduce(math.max);
+  if (hi - lo < minSpan) {
+    final mid = (hi + lo) / 2;
+    lo = mid - minSpan / 2;
+    hi = mid + minSpan / 2;
   }
+  final pad = (hi - lo) * 0.1;
+  lo -= pad;
+  hi += pad;
+  return v
+      .map((e) => e == null ? double.nan : ((e - lo) / (hi - lo)).clamp(0.0, 1.0).toDouble())
+      .toList();
 }
 
-/// Maps raw values to 0..1 for a line chart between [lo] and [hi].
-List<double> _line(List<double> v, double lo, double hi) =>
-    v.map((e) => ((e - lo) / (hi - lo)).clamp(0.0, 1.0).toDouble()).toList();
-
-/// Maps raw values to 0..1 relative to the biggest value.
-List<double> _bars(List<double> v) {
-  final m = v.reduce(math.max);
-  return v.map((e) => (e / m).clamp(0.0, 1.0).toDouble()).toList();
+List<double> _normBars(List<double?> v) {
+  final vals = v.whereType<double>();
+  final m = vals.isEmpty ? 0.0 : vals.reduce(math.max);
+  return v.map((e) => (e == null || m <= 0) ? 0.0 : (e / m).clamp(0.0, 1.0).toDouble()).toList();
 }
 
-class PeriodStats {
-  // Header labels
-  final String heartRate;
-  final String oxygen;
-  final String steps;
-  final String calories;
-
-  // Breathing tiles
-  final String collectibles;
-  final String exercises;
-  final String totalTime;
-
-  // Chart data (normalised 0..1). Lines have 8 points, bars have 7.
-  final List<double> heartLine;
-  final List<double> oxygenLine;
-  final List<double> stepsBars;
-  final List<double> caloriesBars;
-
-  const PeriodStats({
-    required this.heartRate,
-    required this.oxygen,
-    required this.steps,
-    required this.calories,
-    required this.collectibles,
-    required this.exercises,
-    required this.totalTime,
-    required this.heartLine,
-    required this.oxygenLine,
-    required this.stepsBars,
-    required this.caloriesBars,
-  });
-
-  _Series get series => _Series(heartLine, oxygenLine, stepsBars, caloriesBars);
-}
-
-class StatsData {
-  static final Map<StatsPeriod, PeriodStats> data = {
-    StatsPeriod.day: PeriodStats(
-      heartRate: '68 bpm',
-      oxygen: '98%',
-      steps: '6,420',
-      calories: '1,840 kcal',
-      collectibles: '1',
-      exercises: '6',
-      totalTime: '28m',
-      heartLine: _line([64, 62, 70, 78, 82, 76, 72, 70], 50, 100),
-      oxygenLine: _line([97.8, 98, 97.6, 98.2, 98, 97.9, 98.1, 98], 96, 100),
-      stepsBars: _bars([420, 980, 760, 1500, 640, 1100, 1020]),
-      caloriesBars: _bars([160, 240, 280, 390, 230, 300, 240]),
-    ),
-    StatsPeriod.week: PeriodStats(
-      heartRate: '72 bpm',
-      oxygen: '98%',
-      steps: '6,420',
-      calories: '1,840 kcal',
-      collectibles: '5',
-      exercises: '42',
-      totalTime: '3h 20m',
-      heartLine: _line([70, 76, 66, 84, 72, 78, 62, 74], 50, 100),
-      oxygenLine: _line([97.5, 98, 97.8, 98.2, 97.9, 98.4, 98.1, 98], 96, 100),
-      stepsBars: _bars([3200, 4800, 3900, 6000, 5200, 2600, 6420]),
-      caloriesBars: _bars([1300, 1250, 1500, 1400, 1700, 1200, 1840]),
-    ),
-    StatsPeriod.month: PeriodStats(
-      heartRate: '71 bpm',
-      oxygen: '97%',
-      steps: '5,980',
-      calories: '1,720 kcal',
-      collectibles: '12',
-      exercises: '168',
-      totalTime: '13h 10m',
-      heartLine: _line([68, 72, 70, 75, 69, 73, 71, 72], 50, 100),
-      oxygenLine: _line([97, 97.4, 97.2, 97.8, 97.5, 97.1, 97.6, 97], 96, 100),
-      stepsBars: _bars([5200, 6100, 4800, 6900, 5600, 6400, 5980]),
-      caloriesBars: _bars([1600, 1700, 1550, 1850, 1700, 1800, 1720]),
-    ),
-    StatsPeriod.year: PeriodStats(
-      heartRate: '70 bpm',
-      oxygen: '97%',
-      steps: '5,640',
-      calories: '1,690 kcal',
-      collectibles: '41',
-      exercises: '1,920',
-      totalTime: '152h 30m',
-      heartLine: _line([73, 71, 69, 70, 68, 70, 71, 70], 50, 100),
-      oxygenLine: _line([97.2, 97.5, 97.1, 97.4, 97.6, 97.3, 97.5, 97.4], 96, 100),
-      stepsBars: _bars([4800, 5200, 6000, 6400, 5900, 5100, 5640]),
-      caloriesBars: _bars([1550, 1600, 1750, 1800, 1700, 1620, 1690]),
-    ),
-  };
-}
-
-/// Chart values currently on screen (lets us animate between periods).
+/// Chart values currently on screen (lets us animate between data sets).
 class _Series {
   final List<double> heart;
   final List<double> oxygen;
@@ -153,15 +60,28 @@ class _Series {
 
   const _Series(this.heart, this.oxygen, this.steps, this.calories);
 
-  factory _Series.flat() => _Series(
-        List.filled(8, 0.0),
-        List.filled(8, 0.0),
-        List.filled(7, 0.0),
-        List.filled(7, 0.0),
+  factory _Series.empty() => const _Series([], [], [], []);
+
+  factory _Series.fromSnapshot(StatsSnapshot s) => _Series(
+        _normLine(s.heart, 20),
+        _normLine(s.spo2, 4),
+        _normBars(s.steps),
+        _normBars(s.calories),
       );
 
-  static List<double> _l(List<double> a, List<double> b, double t) =>
-      List.generate(b.length, (i) => a[i] + (b[i] - a[i]) * t);
+  /// Works when the two series have different lengths (e.g. 24 hours -> 7 days).
+  static List<double> _l(List<double> a, List<double> b, double t) {
+    return List.generate(b.length, (i) {
+      final target = b[i];
+      if (target.isNaN) return double.nan;
+      var start = 0.0;
+      if (a.isNotEmpty) {
+        final idx = ((i + 0.5) * a.length / b.length).floor().clamp(0, a.length - 1);
+        if (!a[idx].isNaN) start = a[idx];
+      }
+      return start + (target - start) * t;
+    });
+  }
 
   static _Series lerp(_Series a, _Series b, double t) => _Series(
         _l(a.heart, b.heart, t),
@@ -169,6 +89,31 @@ class _Series {
         _l(a.steps, b.steps, t),
         _l(a.calories, b.calories, t),
       );
+}
+
+/// ---------------------------------------------------------------------------
+/// FORMATTING
+/// ---------------------------------------------------------------------------
+const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+String _clock(DateTime t) {
+  final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+  final m = t.minute.toString().padLeft(2, '0');
+  return '$h:$m ${t.hour < 12 ? 'AM' : 'PM'}';
+}
+
+String _rangeLabel(StatsSnapshot s) {
+  String md(DateTime d) => '${_months[d.month - 1]} ${d.day}';
+  switch (s.period) {
+    case StatsPeriod.day:
+      return 'Today, ${md(s.rangeEnd)}';
+    case StatsPeriod.week:
+    case StatsPeriod.month:
+      return '${md(s.rangeStart)} – ${md(s.rangeEnd)}';
+    case StatsPeriod.year:
+      return '${_months[s.rangeStart.month - 1]} ${s.rangeStart.year} – '
+          '${_months[s.rangeEnd.month - 1]} ${s.rangeEnd.year}';
+  }
 }
 
 /// ---------------------------------------------------------------------------
@@ -186,8 +131,12 @@ class _StatsPageState extends State<StatsPage> with TickerProviderStateMixin {
 
   late final AnimationController _intro;
   late final AnimationController _morph;
-  late _Series _from;
-  late _Series _to;
+  late final StatsRepository _repo;
+  bool _bound = false;
+
+  _Series _from = _Series.empty();
+  _Series _to = _Series.empty();
+  StatsSnapshot? _lastSnap;
 
   @override
   void initState() {
@@ -200,17 +149,24 @@ class _StatsPageState extends State<StatsPage> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 700),
     );
-    _from = _Series.flat();
-    _to = StatsData.data[_period]!.series;
+  }
 
-    // Charts grow in just after the cards fade in.
-    Future.delayed(const Duration(milliseconds: 350), () {
-      if (mounted) _morph.forward(from: 0);
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_bound) return;
+    _bound = true;
+    _repo = context.read<StatsRepository>();
+    _repo.addListener(_onRepo);
+    _retarget();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _repo.setActivePeriod(_period);
     });
   }
 
   @override
   void dispose() {
+    _repo.removeListener(_onRepo);
     _intro.dispose();
     _morph.dispose();
     super.dispose();
@@ -222,15 +178,28 @@ class _StatsPageState extends State<StatsPage> with TickerProviderStateMixin {
         Curves.easeOutCubic.transform(_morph.value),
       );
 
-  void _select(StatsPeriod p) {
-    if (p == _period) return;
-    final current = _shown; // snapshot so interrupted animations stay smooth
+  void _onRepo() {
+    if (mounted) _retarget();
+  }
+
+  /// Animate the charts only when genuinely new data (or a new period) arrives.
+  void _retarget() {
+    final snap = _repo.snapshot(_period);
+    if (snap != null && identical(snap, _lastSnap)) return;
+    _lastSnap = snap;
+    final next = snap == null ? _Series.empty() : _Series.fromSnapshot(snap);
     setState(() {
-      _from = current;
-      _to = StatsData.data[p]!.series;
-      _period = p;
+      _from = _shown; // snapshot so interrupted animations stay smooth
+      _to = next;
     });
     _morph.forward(from: 0);
+  }
+
+  void _select(StatsPeriod p) {
+    if (p == _period) return;
+    setState(() => _period = p);
+    _repo.setActivePeriod(p);
+    _retarget();
   }
 
   Widget _stagger(int index, Widget child) {
@@ -254,133 +223,221 @@ class _StatsPageState extends State<StatsPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final stats = StatsData.data[_period]!;
+    final repo = context.watch<StatsRepository>();
+    final snap = repo.snapshot(_period);
+
+    // Status line under the period selector
+    IconData statusIcon = Icons.sensors_rounded;
+    String? status;
+    if (repo.error != null) {
+      statusIcon = Icons.cloud_off_rounded;
+      status = snap == null
+          ? "Can't reach the server"
+          : "Can't refresh · showing saved data from ${_clock(snap.fetchedAt)}";
+    } else if (snap != null) {
+      status = 'Updated ${_clock(snap.fetchedAt)}'
+          '${snap.includesDemo ? ' · includes simulated demo readings' : ''}';
+    }
 
     return SafeArea(
       bottom: false,
-      child: AnimatedBuilder(
-        animation: _morph,
-        builder: (context, _) {
-          final s = _shown;
-          return SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _stagger(
-                  0,
-                  const Text(
-                    'Statistics',
-                    style: TextStyle(
-                      fontFamily: kSerif,
-                      fontFamilyFallback: kSerifFallback,
-                      fontSize: 30,
-                      fontWeight: FontWeight.w800,
-                      color: StatsColors.white,
+      child: RefreshIndicator(
+        color: StatsColors.mint,
+        backgroundColor: StatsColors.card,
+        onRefresh: repo.syncNow,
+        child: AnimatedBuilder(
+          animation: _morph,
+          builder: (context, _) {
+            final s = _shown;
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _stagger(
+                    0,
+                    const Text(
+                      'Statistics',
+                      style: TextStyle(
+                        fontFamily: kSerif,
+                        fontFamilyFallback: kSerifFallback,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        color: StatsColors.white,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                _stagger(
-                  1,
-                  _PeriodSelector(selected: _period, onChanged: _select),
-                ),
-                const SizedBox(height: 14),
-                _stagger(
-                  2,
-                  _StatCard(
-                    title: 'Heart rate',
-                    value: stats.heartRate,
-                    child: SizedBox(
-                      height: 46,
-                      width: double.infinity,
-                      child: CustomPaint(painter: _LinePainter(s.heart)),
-                    ),
+                  const SizedBox(height: 14),
+                  _stagger(
+                    1,
+                    _PeriodSelector(selected: _period, onChanged: _select),
                   ),
-                ),
-                const SizedBox(height: 14),
-                _stagger(
-                  3,
-                  _StatCard(
-                    title: 'Blood oxygen',
-                    value: stats.oxygen,
-                    child: SizedBox(
-                      height: 52,
-                      width: double.infinity,
-                      child: CustomPaint(painter: _LinePainter(s.oxygen)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _stagger(
-                  4,
-                  _StatCard(
-                    title: 'Steps',
-                    value: stats.steps,
-                    child: SizedBox(
-                      height: 62,
-                      width: double.infinity,
-                      child: CustomPaint(painter: _BarsPainter(s.steps)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _stagger(
-                  5,
-                  _StatCard(
-                    title: 'Calories burnt',
-                    value: stats.calories,
-                    child: SizedBox(
-                      height: 62,
-                      width: double.infinity,
-                      child: CustomPaint(painter: _BarsPainter(s.calories)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                _stagger(
-                  6,
-                  const Text(
-                    'Breathing',
-                    style: TextStyle(color: StatsColors.muted, fontSize: 12.5),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _stagger(
-                  7,
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                  const SizedBox(height: 10),
+                  _stagger(
+                    1,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: _MiniTile(
-                            value: stats.collectibles,
-                            label: 'Collectibles',
+                        if (snap != null)
+                          Text(
+                            _rangeLabel(snap),
+                            style: const TextStyle(
+                              color: StatsColors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _MiniTile(
-                            value: stats.exercises,
-                            label: 'Exercises done',
+                        if (status != null) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(statusIcon, size: 14, color: StatsColors.mint),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  status,
+                                  style: const TextStyle(
+                                    color: StatsColors.muted,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _MiniTile(
-                            value: stats.totalTime,
-                            label: 'Total time',
+                        ],
+                        if (snap != null && !snap.hasData) ...[
+                          const SizedBox(height: 8),
+                          const Text(
+                            'No band readings in this period yet. Connect your band '
+                            'and your data will sync here every minute.',
+                            style: TextStyle(color: StatsColors.muted, fontSize: 12),
                           ),
-                        ),
+                        ],
+                        if (repo.loading) ...[
+                          const SizedBox(height: 8),
+                          const LinearProgressIndicator(
+                            minHeight: 2,
+                            color: StatsColors.mint,
+                            backgroundColor: StatsColors.card,
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                ),
-              ],
-            ),
-          );
-        },
+                  const SizedBox(height: 14),
+                  _stagger(
+                    2,
+                    _StatCard(
+                      title: 'Heart rate · avg',
+                      value: snap?.heartText ?? '--',
+                      caption: snap?.heartCaption,
+                      child: SizedBox(
+                        height: 46,
+                        width: double.infinity,
+                        child: CustomPaint(painter: _LinePainter(s.heart)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _stagger(
+                    3,
+                    _StatCard(
+                      title: 'Blood oxygen · avg',
+                      value: snap?.spo2Text ?? '--',
+                      caption: snap?.spo2Caption,
+                      child: SizedBox(
+                        height: 52,
+                        width: double.infinity,
+                        child: CustomPaint(painter: _LinePainter(s.oxygen)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _stagger(
+                    4,
+                    _StatCard(
+                      title: snap?.isDay == false ? 'Steps · daily avg' : 'Steps',
+                      value: snap?.stepsText ?? '--',
+                      child: SizedBox(
+                        height: 62,
+                        width: double.infinity,
+                        child: CustomPaint(
+                          painter: _BarsPainter(
+                            s.steps,
+                            highlight: _period == StatsPeriod.day ? DateTime.now().hour : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _stagger(
+                    5,
+                    _StatCard(
+                      title: snap?.isDay == false
+                          ? 'Active calories (est.) · daily avg'
+                          : 'Active calories (est.)',
+                      value: snap?.caloriesText ?? '--',
+                      child: SizedBox(
+                        height: 62,
+                        width: double.infinity,
+                        child: CustomPaint(
+                          painter: _BarsPainter(
+                            s.calories,
+                            highlight: _period == StatsPeriod.day ? DateTime.now().hour : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _stagger(
+                    6,
+                    const Text(
+                      'Breathing',
+                      style: TextStyle(color: StatsColors.muted, fontSize: 12.5),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _stagger(
+                    7,
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _MiniTile(
+                              value: snap == null ? '--' : '${snap.collectibles}',
+                              label: 'Collectibles',
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _MiniTile(
+                              value: snap == null ? '--' : '${snap.exercises}',
+                              label: 'Exercises done',
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _MiniTile(
+                              value: snap?.practiceText ?? '--',
+                              label: 'Total time',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -441,9 +498,7 @@ class _PeriodSelector extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: isSel
-                              ? const Color(0xFF0E2A24)
-                              : StatsColors.mint,
+                          color: isSel ? const Color(0xFF0E2A24) : StatsColors.mint,
                         ),
                         child: Text(p.label),
                       ),
@@ -462,12 +517,14 @@ class _PeriodSelector extends StatelessWidget {
 class _StatCard extends StatelessWidget {
   final String title;
   final String value;
+  final String? caption;
   final Widget child;
 
   const _StatCard({
     required this.title,
     required this.value,
     required this.child,
+    this.caption,
   });
 
   @override
@@ -485,15 +542,16 @@ class _StatCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: StatsColors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: StatsColors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-              const Spacer(),
               _FadeText(
                 text: value,
                 alignment: Alignment.centerRight,
@@ -509,6 +567,16 @@ class _StatCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           child,
+          if (caption != null && caption!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                caption!,
+                style: const TextStyle(color: StatsColors.label, fontSize: 11),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -595,37 +663,49 @@ class _FadeText extends StatelessWidget {
 /// ---------------------------------------------------------------------------
 /// PAINTERS
 /// ---------------------------------------------------------------------------
+/// Line chart that leaves gaps where there is no data (NaN) instead of
+/// drawing made-up values. Isolated points are drawn as dots.
 class _LinePainter extends CustomPainter {
-  final List<double> v; // 0..1
+  final List<double> v; // 0..1, NaN = missing
 
   _LinePainter(this.v);
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (v.length < 2) return;
+    if (v.isEmpty) return;
     const pad = 3.0;
-    final dx = (size.width - pad * 2) / (v.length - 1);
+    final dx = v.length == 1 ? 0.0 : (size.width - pad * 2) / (v.length - 1);
+
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..color = StatsColors.mint;
+    final dot = Paint()..color = StatsColors.mint;
 
     final path = Path();
+    var pen = false;
     for (int i = 0; i < v.length; i++) {
+      if (v[i].isNaN) {
+        pen = false;
+        continue;
+      }
       final x = pad + dx * i;
       final y = pad + (1 - v[i]) * (size.height - pad * 2);
-      if (i == 0) {
+
+      final prevOk = i > 0 && !v[i - 1].isNaN;
+      final nextOk = i < v.length - 1 && !v[i + 1].isNaN;
+      if (!prevOk && !nextOk) canvas.drawCircle(Offset(x, y), 2.6, dot);
+
+      if (!pen) {
         path.moveTo(x, y);
+        pen = true;
       } else {
         path.lineTo(x, y);
       }
     }
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..color = StatsColors.mint,
-    );
+    canvas.drawPath(path, stroke);
   }
 
   @override
@@ -634,26 +714,29 @@ class _LinePainter extends CustomPainter {
 
 class _BarsPainter extends CustomPainter {
   final List<double> v; // 0..1
+  final int? highlight; // bar drawn in mint (default: the last one)
 
-  _BarsPainter(this.v);
+  _BarsPainter(this.v, {this.highlight});
 
   @override
   void paint(Canvas canvas, Size size) {
     final n = v.length;
+    if (n == 0) return;
     final slot = size.width / n;
     final barW = slot * 0.72;
+    final radius = math.min(6.0, barW / 2);
+    final hi = highlight ?? n - 1;
 
     for (int i = 0; i < n; i++) {
-      final h = math.max(size.height * 0.12, v[i] * size.height);
+      final value = v[i].isNaN ? 0.0 : v[i];
+      final h = math.max(size.height * 0.08, value * size.height);
       final left = i * slot + (slot - barW) / 2;
-      final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(left, size.height - h, barW, h),
-        const Radius.circular(6),
-      );
       canvas.drawRRect(
-        rect,
-        Paint()
-          ..color = i == n - 1 ? StatsColors.mint : StatsColors.bar,
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(left, size.height - h, barW, h),
+          Radius.circular(radius),
+        ),
+        Paint()..color = i == hi ? StatsColors.mint : StatsColors.bar,
       );
     }
   }

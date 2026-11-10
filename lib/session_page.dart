@@ -6,17 +6,17 @@ import 'package:provider/provider.dart';
 
 // Re-uses AppColors, kSerif, Technique, PlantIcon and Pressable from main.dart
 import 'main.dart';
-import 'audio_widgets.dart' show SeekBar;
+import 'breathe_api.dart';
+import 'audio_state.dart';
+import 'audio_widgets.dart' show TrackTile, audioSnack;
 import 'vitals_service.dart';
+import 'vitals_reading.dart';
 
 /// ---------------------------------------------------------------------------
 /// PLACEHOLDER DATA  (replace with real data / state management)
 /// ---------------------------------------------------------------------------
 class SessionData {
   static const int accuracy = 87; // % (only used while no band is connected)
-  static const String nowPlaying = 'Rain on Leaves';
-  static const double audioProgress = 0.59; // 0..1
-  static const String plantName = 'Fern';
   static const int resumeElapsedSeconds = 108; // 03:12 left of a 5 min session
 }
 
@@ -25,8 +25,9 @@ class _Phase {
   final String action; // Inhaling
   final String hint;
   final int seconds;
+  final String phaseKey; // inhale | hold_in | exhale | hold_out
 
-  const _Phase(this.label, this.action, this.hint, this.seconds);
+  const _Phase(this.label, this.action, this.hint, this.seconds, this.phaseKey);
 }
 
 /// Builds the phases from a pattern string, e.g. "4-4-4-4", "4-7-8", "5-5".
@@ -34,11 +35,11 @@ List<_Phase> _phasesFor(String pattern) {
   final n = pattern.split('-').map((e) => int.tryParse(e) ?? 4).toList();
 
   _Phase inhale(int s) =>
-      _Phase('Inhale', 'Inhaling', 'Breathe in slowly through your nose', s);
+      _Phase('Inhale', 'Inhaling', 'Breathe in slowly through your nose', s, 'inhale');
   _Phase hold(int s) =>
-      _Phase('Hold', 'Holding', 'Hold your breath gently', s);
+      _Phase('Hold', 'Holding', 'Hold your breath gently', s, 'hold');
   _Phase exhale(int s) =>
-      _Phase('Exhale', 'Exhaling', 'Breathe out slowly through your mouth', s);
+      _Phase('Exhale', 'Exhaling', 'Breathe out slowly through your mouth', s, 'exhale');
 
   if (n.length >= 4) return [inhale(n[0]), hold(n[1]), exhale(n[2]), hold(n[3])];
   if (n.length == 3) return [inhale(n[0]), hold(n[1]), exhale(n[2])];
@@ -69,12 +70,17 @@ class _SessionPageState extends State<SessionPage>
 
   // Live data from the ESP32 band
   late final VitalsService _band;
-  Timer? _accTimer;
+  Timer? _uploadTimer;
+  final Stopwatch _sessionStopwatch = Stopwatch()..start();
+  final List<Map<String, dynamic>> _pendingReadings = [];
+  DateTime? _lastReadingAt;
+  int _lastElapsedMs = -1;
+  bool _uploading = false;
   double _userTarget = _minScale; // circle size the user's breath is heading to
   int _accTotal = 0;
   int _accMatch = 0;
 
-  double _audio = SessionData.audioProgress;
+  AudioTrack? _sessionTrack;
   bool _done = false;
 
   static const double _minScale = 0.82;
@@ -82,65 +88,177 @@ class _SessionPageState extends State<SessionPage>
   @override
   void initState() {
     super.initState();
-    _phases = _phasesFor(widget.technique.pattern);
+    _phases = widget.technique.phases.isNotEmpty
+        ? widget.technique.phases.map((p) {
+            final key = p.phase;
+            final label = key == 'inhale'
+                ? 'Inhale'
+                : key == 'exhale'
+                    ? 'Exhale'
+                    : 'Hold';
+            final action = key == 'inhale'
+                ? 'Inhaling'
+                : key == 'exhale'
+                    ? 'Exhaling'
+                    : 'Holding';
+            final hint = key == 'inhale'
+                ? 'Breathe in slowly through your nose'
+                : key == 'exhale'
+                    ? 'Breathe out slowly through your mouth'
+                    : 'Hold your breath gently';
+            return _Phase(label, action, hint, p.durationSec.round().clamp(1, 60).toInt(), key);
+          }).toList()
+        : _phasesFor(widget.technique.pattern);
     _cycleSeconds = _phases.fold(0, (a, p) => a + p.seconds);
-    _startOffset = widget.restart
-        ? Duration.zero
-        : const Duration(seconds: SessionData.resumeElapsedSeconds);
+    // Every newly opened exercise starts at its full default duration.
+    // Do not carry elapsed time over from a previous session.
+    _startOffset = Duration(seconds: widget.technique.elapsedSec);
+    final cycleMs = math.max(1, _cycleSeconds * 1000);
+    final initialCycleValue =
+        (_startOffset.inMilliseconds % cycleMs) / cycleMs;
     _cycle = AnimationController(
       vsync: this,
       duration: Duration(seconds: _cycleSeconds),
+      value: initialCycleValue,
     )..repeat();
 
     _band = context.read<VitalsService>();
     _band.addListener(_onBand);
     final p0 = _band.latest?.phase;
     if (p0 == 'inhale') _userTarget = 1.0;
-    _accTimer = Timer.periodic(
-      const Duration(milliseconds: 500),
-      (_) => _sampleAccuracy(),
+    // Send BLE samples in small batches instead of making one HTTP request
+    // for every 500 ms notification.
+    _uploadTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => _flushReadings(),
     );
   }
 
   @override
   void dispose() {
-    _accTimer?.cancel();
+    _uploadTimer?.cancel();
     _band.removeListener(_onBand);
     _cycle.dispose();
     super.dispose();
   }
 
-  /// Called whenever the band sends data or its connection changes.
+  /// Called for each BLE notification and connection-state change.
   void _onBand() {
-    final p = _band.latest?.phase;
-    // Inhale = circle grows, exhale = circle shrinks, hold = stays as it is.
-    final target = p == 'inhale'
+    final reading = _band.latest;
+    if (reading == null) return;
+
+    final phase = reading.phase.toLowerCase();
+    final target = phase == 'inhale'
         ? 1.0
-        : p == 'exhale'
+        : phase == 'exhale'
             ? _minScale
             : null;
+
+    // Count each actual BLE packet once. Generic `hold` is intentionally not
+    // scored because the ESP32 cannot distinguish hold_in from hold_out.
+    if (_lastReadingAt == null || reading.at.isAfter(_lastReadingAt!)) {
+      _lastReadingAt = reading.at;
+      final expected = _currentGuidePhaseKey();
+      if (phase == 'inhale' || phase == 'exhale') {
+        _accTotal++;
+        if (phase == expected) _accMatch++;
+      }
+      _queueReading(reading);
+    }
+
     if (!mounted) return;
     setState(() {
       if (target != null) _userTarget = target;
     });
   }
 
-  /// Every half second, check whether the user's breathing phase matches the
-  /// guide's phase. The accuracy ring is the share of matching samples.
-  void _sampleAccuracy() {
-    if (!_band.isLive) return;
+  String _currentGuidePhaseKey() {
     final cycleT = _cycle.value * _cycleSeconds;
-    double acc = 0;
-    String label = _phases.last.label;
-    for (final p in _phases) {
-      if (cycleT < acc + p.seconds) {
-        label = p.label;
-        break;
-      }
-      acc += p.seconds;
+    double elapsed = 0;
+    for (final phase in _phases) {
+      if (cycleT < elapsed + phase.seconds) return phase.phaseKey;
+      elapsed += phase.seconds;
     }
-    _accTotal++;
-    if (_band.latest!.phase == label.toLowerCase()) _accMatch++;
+    return _phases.last.phaseKey;
+  }
+
+  void _queueReading(VitalsReading reading) {
+    final sessionId = widget.technique.sessionId;
+    if (sessionId == null || !_band.isConnected) return;
+
+    var elapsedMs = _startOffset.inMilliseconds +
+        _sessionStopwatch.elapsedMilliseconds;
+    if (elapsedMs <= _lastElapsedMs) elapsedMs = _lastElapsedMs + 1;
+    _lastElapsedMs = elapsedMs;
+
+    // Firmware currently sends phase from the two physical buttons. `hold`
+    // has no inhale/exhale subtype, so send null and let the backend exclude
+    // that sample from the accuracy denominator.
+    final detected = (reading.phase == 'inhale' || reading.phase == 'exhale')
+        ? reading.phase
+        : null;
+
+    final sensors = <String, dynamic>{};
+    // The supplied firmware sets demo=true and generates mock vitals. Do not
+    // persist those values as real health measurements.
+    if (!reading.demo) {
+      sensors.addAll({
+        'spo2_pct': reading.spo2,
+        'heart_rate_bpm': reading.heartRate,
+        'hrv_ms': reading.hrv,
+        'stress': reading.stress,
+        'steps': reading.steps.toDouble(),
+        'wrist_tilt_deg': reading.wristTiltDeg,
+      });
+    }
+
+    _pendingReadings.add({
+      'elapsed_ms': elapsedMs,
+      'detected_phase': detected,
+      'sensors': sensors,
+    });
+    if (_pendingReadings.length >= 10) _flushReadings();
+  }
+
+  Future<void> _flushReadings() async {
+    final sessionId = widget.technique.sessionId;
+    if (sessionId == null || _pendingReadings.isEmpty || _uploading) return;
+    _uploading = true;
+    final batch = _pendingReadings.take(40).toList();
+    _pendingReadings.removeRange(0, batch.length);
+    try {
+      await BreatheApi.instance.uploadBandReadings(sessionId, batch);
+    } catch (e) {
+      // Keep failed readings for the next retry, preserving timestamp order.
+      _pendingReadings.insertAll(0, batch);
+      if (_pendingReadings.length > 200) {
+        _pendingReadings.removeRange(0, _pendingReadings.length - 200);
+      }
+      debugPrint('Could not upload band readings: $e');
+    } finally {
+      _uploading = false;
+    }
+  }
+
+  Future<void> _finishSession({required bool completed}) async {
+    if (_done) return;
+    _done = true;
+    _uploadTimer?.cancel();
+    // Give any in-flight upload a chance to finish, then send the final batch.
+    while (_uploading) {
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    }
+    await _flushReadings();
+    if (!mounted) return;
+    final elapsed = _startOffset.inSeconds + _sessionStopwatch.elapsed.inSeconds;
+    final accuracy = _accTotal == 0 ? null : (_accMatch / _accTotal) * 100;
+    Navigator.of(context).pop(BreatheSessionResult(
+      elapsedSec: elapsed,
+      cyclesCompleted: _cycleSeconds <= 0 ? 0 : elapsed ~/ _cycleSeconds,
+      accuracyPct: accuracy,
+      completed: completed,
+      abandoned: !completed,
+    ));
   }
 
   String _fmt(int totalSeconds) {
@@ -158,6 +276,243 @@ class _SessionPageState extends State<SessionPage>
       default:
         return 'Holding';
     }
+  }
+
+  Future<void> _openMusicPicker() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final height = MediaQuery.of(sheetContext).size.height * 0.78;
+        return SafeArea(
+          top: false,
+          child: Container(
+            height: height,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+            decoration: const BoxDecoration(
+              color: AppColors.bgTop,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+              border: Border(top: BorderSide(color: AppColors.cardBorder, width: 1.2)),
+            ),
+            child: AnimatedBuilder(
+              animation: audio,
+              builder: (context, _) {
+                final presets = audio.library;
+                final imported = audio.imported;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBorder,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Choose your music',
+                      style: TextStyle(
+                        fontFamily: kSerif,
+                        fontFamilyFallback: kSerifFallback,
+                        fontSize: 23,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Pick a preset sound or use audio from your device.',
+                      style: TextStyle(color: AppColors.mintText, fontSize: 12.5),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Preset sounds',
+                            style: TextStyle(color: AppColors.white, fontSize: 14, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        Text(
+                          '${presets.length} available',
+                          style: const TextStyle(color: AppColors.mintText, fontSize: 11.5),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Expanded(
+                      child: ListView(
+                        physics: const BouncingScrollPhysics(),
+                        children: [
+                          for (final track in presets)
+                            TrackTile(
+                              key: ValueKey('session-${track.id}'),
+                              track: track,
+                              isCurrent: _sessionTrack?.id == track.id,
+                              isPlaying: _sessionTrack?.id == track.id && audio.isPlaying,
+                              onTap: () {
+                                setState(() => _sessionTrack = track);
+                                if (audio.current?.id != track.id || !audio.isPlaying) {
+                                  audio.toggle(track);
+                                }
+                                Navigator.of(sheetContext).pop();
+                              },
+                            ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Your imported music',
+                                  style: TextStyle(color: AppColors.white, fontSize: 14, fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                              Pressable(
+                                onTap: audio.importing
+                                    ? () {}
+                                    : () async {
+                                        final result = await audio.importAudio();
+                                        if (!mounted) return;
+                                        String message;
+                                        if (result.error != null) {
+                                          message = result.error!;
+                                        } else if (result.cancelled) {
+                                          return;
+                                        } else if (result.added == 0) {
+                                          message = 'Those tracks are already imported';
+                                        } else {
+                                          message = 'Imported ${result.added} ${result.added == 1 ? 'track' : 'tracks'}. Select one below.';
+                                        }
+                                        audioSnack(ScaffoldMessenger.of(context), message);
+                                      },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(color: AppColors.cardBorder),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (audio.importing)
+                                        const SizedBox(
+                                          width: 13,
+                                          height: 13,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.mint),
+                                        )
+                                      else
+                                        const Icon(Icons.add_rounded, size: 16, color: AppColors.mint),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        audio.importing ? 'Importing' : 'Import',
+                                        style: const TextStyle(color: AppColors.mint, fontSize: 12, fontWeight: FontWeight.w700),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          if (imported.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 18),
+                              child: Text(
+                                'Your imported tracks will appear here.',
+                                style: TextStyle(color: AppColors.mintText, fontSize: 12),
+                              ),
+                            )
+                          else
+                            for (final track in imported)
+                              TrackTile(
+                                key: ValueKey('session-${track.id}'),
+                                track: track,
+                                isCurrent: _sessionTrack?.id == track.id,
+                                isPlaying: _sessionTrack?.id == track.id && audio.isPlaying,
+                                onTap: () {
+                                  setState(() => _sessionTrack = track);
+                                  if (audio.current?.id != track.id || !audio.isPlaying) {
+                                    audio.toggle(track);
+                                  }
+                                  Navigator.of(sheetContext).pop();
+                                },
+                              ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMusicCard() {
+    return AnimatedBuilder(
+      animation: audio,
+      builder: (context, _) {
+        final track = _sessionTrack;
+        final playing = track != null && audio.current?.id == track.id && audio.isPlaying;
+        return _SessionCard(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(color: Color(0xFF23503F), shape: BoxShape.circle),
+                child: const Icon(Icons.music_note_rounded, color: AppColors.mint, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Session music', style: TextStyle(color: AppColors.mintText, fontSize: 11.5)),
+                    const SizedBox(height: 3),
+                    Text(
+                      track?.title ?? 'Choose a sound for your session',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.white, fontSize: 14, fontWeight: FontWeight.w700),
+                    ),
+                    if (track != null)
+                      Text(playing ? 'Playing' : 'Paused', style: const TextStyle(color: AppColors.mintText, fontSize: 11)),
+                  ],
+                ),
+              ),
+              if (track != null)
+                Pressable(
+                  onTap: () => audio.toggle(track),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: AppColors.mint, size: 23),
+                  ),
+                ),
+              Pressable(
+                onTap: _openMusicPicker,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                  decoration: BoxDecoration(color: AppColors.mint, borderRadius: BorderRadius.circular(20)),
+                  child: Text(
+                    track == null ? 'Choose' : 'Change',
+                    style: const TextStyle(color: AppColors.dark, fontSize: 12, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -235,9 +590,8 @@ class _SessionPageState extends State<SessionPage>
     final remaining = math.max(0, totalSession - elapsedSession);
 
     if (remaining <= 0 && !_done) {
-      _done = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.of(context).maybePop();
+        if (mounted) _finishSession(completed: true);
       });
     }
 
@@ -277,12 +631,10 @@ class _SessionPageState extends State<SessionPage>
     // ---- Live band data -------------------------------------------------------
     final live = _band.isLive;
     final bandPhase = _band.latest?.phase;
-    final inSync = live && bandPhase == phase.label.toLowerCase();
+    final inSync = live && (bandPhase == phase.phaseKey || (bandPhase == 'hold' && phase.phaseKey.startsWith('hold_')));
     final accuracy = live
         ? (_accTotal == 0 ? 0.0 : _accMatch / _accTotal)
         : SessionData.accuracy / 100;
-
-    final done = (t.progress).clamp(0, t.goal);
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -293,7 +645,7 @@ class _SessionPageState extends State<SessionPage>
           Row(
             children: [
               Pressable(
-                onTap: () => Navigator.of(context).maybePop(),
+                onTap: () => _finishSession(completed: false),
                 child: Container(
                   width: 44,
                   height: 44,
@@ -548,63 +900,8 @@ class _SessionPageState extends State<SessionPage>
           ),
           const SizedBox(height: 14),
 
-          // ---- Now playing ------------------------------------------------
-          _SessionCard(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Now playing',
-                  style: TextStyle(color: AppColors.mintText, fontSize: 12),
-                ),
-                const SizedBox(height: 3),
-                const Text(
-                  SessionData.nowPlaying,
-                  style: TextStyle(
-                    color: AppColors.white,
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SeekBar(
-                  value: _audio,
-                  onChanged: (v) => setState(() => _audio = v),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // ---- Footer -------------------------------------------------------
-          Text(
-            '${SessionData.plantName} · $done/${t.goal} successful sessions '
-            'to grow. Finish a first session to collect it.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.mintText,
-              fontSize: 12,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(t.goal, (i) {
-              final filled = i < done;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 14,
-                height: 14,
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: filled ? AppColors.mint : const Color(0xFF2E6B52),
-                ),
-              );
-            }),
-          ),
+          // ---- Session music ------------------------------------------------
+          _buildMusicCard(),
         ],
       ),
     );

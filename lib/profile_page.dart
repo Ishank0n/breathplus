@@ -1,18 +1,19 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
-// Re-uses Pressable, kSerif, kSerifFallback (main.dart) and StatsColors
+// Re-uses Pressable, kSerif, kSerifFallback, auth, AuthGate (main.dart) and StatsColors
 import 'main.dart';
 import 'stats_page.dart';
-import 'band_screen.dart';
+import 'vitals_service.dart';
 import 'reminder_service.dart';
 
 /// ---------------------------------------------------------------------------
 /// PLACEHOLDER DATA  (replace with real data / state management)
 /// ---------------------------------------------------------------------------
 class ProfileData {
-  static const String name = 'Your name';
-  static const String email = 'you@email.com';
   static const int bandBattery = 78;
   static const String bandLastSync = '2 min ago';
   static const String footnote =
@@ -50,9 +51,8 @@ class _ProfilePageState extends State<ProfilePage>
   bool _hapticCues = true;
   bool _dailyReminder = false; // loaded from storage in initState
   TimeOfDay _time = const TimeOfDay(hour: 20, minute: 0);
-  int _goal = 1;
-  String _units = 'Metric';
   bool _bandPaired = true;
+  bool _loggingOut = false;
   final Map<String, bool> _health = {
     'Heart rate': true,
     'Blood oxygen': true,
@@ -70,6 +70,58 @@ class _ProfilePageState extends State<ProfilePage>
       duration: const Duration(milliseconds: 1300),
     )..forward();
     _loadReminder();
+    _loadUser();
+  }
+
+  // ---- Signed-in user --------------------------------------------------------
+  // Same endpoint AuthGate uses to verify the login (main.dart).
+  String _userName = '';
+  String _userEmail = '';
+  bool _userLoaded = false;
+
+  Future<void> _loadUser() async {
+    try {
+      final res = await auth.authedGet('/api/me');
+      if (res.statusCode != 200) {
+        throw Exception('/api/me returned ${res.statusCode}');
+      }
+      final decoded = jsonDecode(res.body);
+      // Accept either { ...user fields } or { "user": { ... } }.
+      final Map<String, dynamic> data =
+          decoded is Map<String, dynamic> && decoded['user'] is Map
+              ? Map<String, dynamic>.from(decoded['user'] as Map)
+              : decoded as Map<String, dynamic>;
+
+      String pick(List<String> keys) {
+        for (final k in keys) {
+          final v = data[k];
+          if (v is String && v.trim().isNotEmpty) return v.trim();
+        }
+        return '';
+      }
+
+      final email = pick(['email']);
+      var name = pick([
+        'name',
+        'display_name',
+        'displayName',
+        'full_name',
+        'given_name',
+      ]);
+      // Fall back to the part of the email before '@'.
+      if (name.isEmpty && email.contains('@')) name = email.split('@').first;
+
+      if (!mounted) return;
+      setState(() {
+        _userName = name;
+        _userEmail = email;
+        _userLoaded = true;
+      });
+    } catch (e) {
+      debugPrint('Profile load failed: $e');
+      if (!mounted) return;
+      setState(() => _userLoaded = true);
+    }
   }
 
   Future<void> _loadReminder() async {
@@ -161,15 +213,66 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   // ---- Row actions -----------------------------------------------------------
-  void _connectBand() {
+  Future<void> _confirmLogout() async {
     HapticFeedback.selectionClick();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BandScreen(
-          connected: _bandPaired,
-          onConnectedChanged: (v) => setState(() => _bandPaired = v),
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: _C.bg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: _C.border),
         ),
+        title: const Text(
+          'Log out?',
+          style: TextStyle(color: _C.white, fontWeight: FontWeight.w800),
+        ),
+        content: const Text(
+          'You will need to sign in again to access your account.',
+          style: TextStyle(color: _C.subtle, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: _C.subtle)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text(
+              'Log out',
+              style: TextStyle(color: _C.danger, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
       ),
+    );
+
+    if (confirmed != true || !mounted || _loggingOut) return;
+
+    setState(() => _loggingOut = true);
+
+    // Disconnect the BLE band first. A disconnect failure must not prevent
+    // the user from logging out of their account.
+    try {
+      await context.read<VitalsService>().disconnect();
+    } catch (e) {
+      debugPrint('Band disconnect during logout failed: $e');
+    }
+
+    try {
+      await auth.signOut();
+    } catch (e) {
+      // AuthService clears the local tokens even if the remote/Google sign-out
+      // step fails, so continue to the authentication gate.
+      debugPrint('Sign-out cleanup warning: $e');
+    }
+
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const AuthGate()),
+      (route) => false,
     );
   }
 
@@ -208,35 +311,11 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
-  void _openGoal() {
-    _openSheet(
-      (_) => _OptionSheet<int>(
-        title: 'Daily streak goal',
-        options: const [1, 2, 3, 5],
-        selected: _goal,
-        labelOf: (n) => n == 1 ? '1 session' : '$n sessions',
-        onChanged: (v) => setState(() => _goal = v),
-      ),
-    );
-  }
-
   void _openHealth() {
     _openSheet(
       (_) => _HealthSheet(
         values: Map<String, bool>.from(_health),
         onChanged: (k, v) => setState(() => _health[k] = v),
-      ),
-    );
-  }
-
-  void _openUnits() {
-    _openSheet(
-      (_) => _OptionSheet<String>(
-        title: 'Units',
-        options: const ['Metric', 'Imperial'],
-        selected: _units,
-        labelOf: (s) => s,
-        onChanged: (v) => setState(() => _units = v),
       ),
     );
   }
@@ -253,8 +332,11 @@ class _ProfilePageState extends State<ProfilePage>
   // ---- Build -----------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    final initial =
-        ProfileData.name.isEmpty ? '?' : ProfileData.name[0].toUpperCase();
+    final name = !_userLoaded
+        ? 'Loading…'
+        : (_userName.isEmpty ? 'Your profile' : _userName);
+    final email = _userEmail;
+    final initial = _userName.isEmpty ? '?' : _userName[0].toUpperCase();
 
     final rows = <Widget>[
       _SettingRow(
@@ -288,19 +370,9 @@ class _ProfilePageState extends State<ProfilePage>
         onTap: _pickTime,
       ),
       _SettingRow(
-        label: 'Daily streak goal',
-        trailing: _ValueText(_goal == 1 ? '1 session' : '$_goal sessions'),
-        onTap: _openGoal,
-      ),
-      _SettingRow(
         label: 'Health data access',
         trailing: const _ValueText('Manage'),
         onTap: _openHealth,
-      ),
-      _SettingRow(
-        label: 'Units',
-        trailing: _ValueText(_units),
-        onTap: _openUnits,
       ),
       _SettingRow(
         label: 'Privacy and help',
@@ -321,121 +393,132 @@ class _ProfilePageState extends State<ProfilePage>
         ),
       ),
       child: SafeArea(
-      bottom: false,
-      child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _stagger(
-              0,
-              const Text(
-                'You and settings',
-                style: TextStyle(
-                  fontFamily: kSerif,
-                  fontFamilyFallback: kSerifFallback,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: _C.white,
+        bottom: false,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _stagger(
+                0,
+                const Text(
+                  'You and settings',
+                  style: TextStyle(
+                    fontFamily: kSerif,
+                    fontFamilyFallback: kSerifFallback,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: _C.white,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 14),
-            _stagger(
-              1,
-              Row(
-                children: [
-                  Container(
-                    width: 62,
-                    height: 62,
-                    alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _C.avatar,
-                    ),
-                    child: Text(
-                      initial,
-                      style: const TextStyle(
-                        fontFamily: kSerif,
-                        fontFamilyFallback: kSerifFallback,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: _C.avatarText,
+              const SizedBox(height: 14),
+              _stagger(
+                1,
+                Row(
+                  children: [
+                    Container(
+                      width: 62,
+                      height: 62,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _C.avatar,
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        ProfileData.name,
-                        style: TextStyle(
+                      child: Text(
+                        initial,
+                        style: const TextStyle(
                           fontFamily: kSerif,
                           fontFamilyFallback: kSerifFallback,
-                          fontSize: 17,
+                          fontSize: 26,
                           fontWeight: FontWeight.w800,
-                          color: _C.white,
+                          color: _C.avatarText,
                         ),
                       ),
-                      SizedBox(height: 2),
-                      Text(
-                        ProfileData.email,
-                        style: TextStyle(color: _C.subtle, fontSize: 12.5),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: kSerif,
+                              fontFamilyFallback: kSerifFallback,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: _C.white,
+                            ),
+                          ),
+                          if (email.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              email,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: _C.subtle, fontSize: 12.5),
+                            ),
+                          ],
+                        ],
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _stagger(
-              2,
-              Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: _C.bg,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: _C.border, width: 1.2),
+                    ),
+                  ],
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(21),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 6),
-                      for (int i = 0; i < rows.length; i++)
-                        _stagger(3 + i, rows[i]),
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(16, 12, 16, 16),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            ProfileData.footnote,
-                            style: TextStyle(
-                              color: _C.subtle,
-                              fontSize: 10.5,
-                              height: 1.4,
+              ),
+              const SizedBox(height: 16),
+              _stagger(
+                2,
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: _C.bg,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: _C.border, width: 1.2),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(21),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 6),
+                        for (int i = 0; i < rows.length; i++)
+                          _stagger(3 + i, rows[i]),
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 12, 16, 16),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              ProfileData.footnote,
+                              style: TextStyle(
+                                color: _C.subtle,
+                                fontSize: 10.5,
+                                height: 1.4,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            _stagger(
-              3 + rows.length,
-              _PillButton(
-                label: _bandPaired ? 'Manage band' : 'Connect band',
-                onTap: _connectBand,
+              const SizedBox(height: 16),
+              _stagger(
+                3 + rows.length,
+                _PillButton(
+                  label: 'Log out',
+                  onTap: _confirmLogout,
+                  enabled: !_loggingOut,
+                  loading: _loggingOut,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -805,95 +888,6 @@ class _BandSheetState extends State<_BandSheet> {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Generic single-choice sheet (streak goal, units).
-class _OptionSheet<T> extends StatefulWidget {
-  final String title;
-  final List<T> options;
-  final T selected;
-  final String Function(T) labelOf;
-  final ValueChanged<T> onChanged;
-
-  const _OptionSheet({
-    required this.title,
-    required this.options,
-    required this.selected,
-    required this.labelOf,
-    required this.onChanged,
-  });
-
-  @override
-  State<_OptionSheet<T>> createState() => _OptionSheetState<T>();
-}
-
-class _OptionSheetState<T> extends State<_OptionSheet<T>> {
-  late T _sel = widget.selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SheetFrame(
-      title: widget.title,
-      child: Column(
-        children: widget.options.map((o) {
-          final on = o == _sel;
-          return _RowTap(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              setState(() => _sel = o);
-              widget.onChanged(o);
-              Future.delayed(const Duration(milliseconds: 220), () {
-                if (mounted) Navigator.of(context).pop();
-              });
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.labelOf(o),
-                      style: TextStyle(
-                        color: on ? _C.mint : _C.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 22,
-                    height: 22,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: on ? _C.mint : _C.border,
-                        width: 2,
-                      ),
-                    ),
-                    child: AnimatedScale(
-                      scale: on ? 1 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeOutBack,
-                      child: Container(
-                        width: 11,
-                        height: 11,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _C.mint,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
       ),
     );
   }

@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-
+import 'auth_stats_api.dart';
+import 'stats_repository.dart';
 import 'breathe_api.dart';
 import 'session_page.dart';
 import 'stats_page.dart';
@@ -25,9 +26,20 @@ Future<void> main() async {
     systemNavigationBarIconBrightness: Brightness.light,
   ));
   runApp(
-    // One shared BLE connection for every page (home, breathing session...).
-    ChangeNotifierProvider(
-      create: (_) => VitalsService(),
+    MultiProvider(
+      providers: [
+        // One shared BLE connection for every page (home, breathing session...).
+        ChangeNotifierProvider(create: (_) => VitalsService()),
+        // Collects band data in the background and syncs it every minute.
+        // lazy: false so it starts with the app, not when the Stats tab opens.
+        ChangeNotifierProvider(
+          lazy: false,
+          create: (ctx) => StatsRepository(
+            vitals: ctx.read<VitalsService>(),
+            api: AuthStatsApi(),
+          ),
+        ),
+      ],
       child: const BreatheApp(),
     ),
   );
@@ -1157,7 +1169,6 @@ class _HomePageState extends State<HomePage>
       );
     }
 
-    final summary = _summary!;
     final last = _lastSession;
     final lastTechnique = _lastTechnique;
 
@@ -1225,25 +1236,6 @@ class _HomePageState extends State<HomePage>
                         Icons.swap_horiz_rounded,
                         size: 20,
                         color: AppColors.white,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    margin: const EdgeInsets.only(top: 2),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: const Color(0x33F2C47E),
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: AppColors.amber, width: 1.2),
-                    ),
-                    child: Text(
-                      '${summary.currentStreakDays}-day streak',
-                      style: const TextStyle(
-                        color: AppColors.amber,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
@@ -1372,10 +1364,10 @@ class _HomePageState extends State<HomePage>
         children: [
           Row(
             children: [
-              Expanded(
+              const Expanded(
                 child: Text(
-                  canContinue ? 'Continue last session' : 'Last session',
-                  style: const TextStyle(
+                  'Last session',
+                  style: TextStyle(
                     color: AppColors.mintText,
                     fontSize: 11.5,
                   ),
@@ -1429,60 +1421,31 @@ class _HomePageState extends State<HomePage>
             ],
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                flex: 5,
-                child: Pressable(
-                  onTap: () => canContinue
-                      ? _openSession(t, resume: true)
-                      : _openSession(t),
-                  child: Container(
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.mint,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Text(
-                      canContinue ? 'Continue' : 'Start again',
-                      style: const TextStyle(
-                        color: AppColors.dark,
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+          SizedBox(
+            width: double.infinity,
+            child: Pressable(
+              onTap: () => _openSession(t, restart: true),
+              child: Container(
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0x331F4A3A),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: AppColors.cardBorder,
+                    width: 1.3,
+                  ),
+                ),
+                child: const Text(
+                  'Redo',
+                  style: TextStyle(
+                    color: AppColors.white,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 4,
-                child: Pressable(
-                  onTap: () => _openSession(t, restart: true),
-                  child: Container(
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: const Color(0x331F4A3A),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: AppColors.cardBorder,
-                        width: 1.3,
-                      ),
-                    ),
-                    child: const Text(
-                      'Redo',
-                      style: TextStyle(
-                        color: AppColors.white,
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
@@ -1513,10 +1476,10 @@ class _ErrorView extends StatelessWidget {
               style: const TextStyle(color: AppColors.white, fontSize: 14),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Server: $kApiBaseUrl',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.mintText, fontSize: 11.5),
+              style: const TextStyle(color: AppColors.mintText, fontSize: 11.5),
             ),
             const SizedBox(height: 18),
             Pressable(

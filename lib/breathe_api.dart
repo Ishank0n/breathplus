@@ -5,19 +5,19 @@ import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'auth_service.dart';
+
 /// Client for the Breathe Flask API (app.py).
 ///
-/// Covers every endpoint the app uses. The admin technique endpoints
-/// (POST/PATCH /api/techniques, PUT /api/techniques/<ref>/phases) are left out
-/// on purpose: they need ADMIN_API_KEY, and an admin key must never be shipped
-/// inside a mobile app, because anyone can extract it from the APK/IPA.
+/// Every /api/users/... call sends the sign-in token from AuthService and uses
+/// the signed-in user's id. Users are created by Google sign-in, not by this file.
+///
+/// The admin endpoints (POST /api/users, POST/PATCH /api/techniques,
+/// PUT /api/techniques/<ref>/phases) are left out on purpose: they need
+/// ADMIN_API_KEY, and an admin key must never be shipped inside a mobile app.
 
-/// Where the Flask server lives. Change it without editing code:
-///   flutter run --dart-define=API_BASE_URL=http://192.168.1.50:5001
-const String kApiBaseUrl = String.fromEnvironment(
-  'API_BASE_URL',
-  defaultValue: 'https://hope-trains-licensed-prospective.trycloudflare.com',
-);
+/// Where the Flask server lives. Set in ONE place: _apiBase in auth_service.dart.
+String get kApiBaseUrl => AuthService.apiBase;
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -30,6 +30,9 @@ class ApiException implements Exception {
   const ApiException(this.statusCode, this.message);
 
   bool get isNetworkError => statusCode == 0;
+
+  /// True when the user has to sign in again (send them to the login screen).
+  bool get needsSignIn => statusCode == 401;
 
   @override
   String toString() => message;
@@ -340,46 +343,67 @@ class BreatheApi {
   static final BreatheApi instance = BreatheApi._();
 
   static const Duration _timeout = Duration(seconds: 10);
-  static const String _userIdKey = 'breathe_user_id';
+  static const String _legacyUserIdKey = 'breathe_user_id'; // pre-sign-in id, no longer used
   static const int maxSessionSec = 4 * 60 * 60; // matches MAX_SESSION_SEC
 
   final http.Client _client = http.Client();
-  Future<String>? _userFuture;
+  final AuthService _auth = AuthService.instance;
   String? _userId;
 
+  /// Last known signed-in user id (null until ensureUser() has run).
   String? get currentUserId => _userId;
 
   String _seg(String value) => Uri.encodeComponent(value);
 
+  /// Sends a request. With [authed] (the default) it adds the sign-in token,
+  /// and on a 401 refreshes the token once and retries.
   Future<dynamic> _request(
     String method,
     String path, {
     Map<String, dynamic>? body,
     Map<String, String>? query,
+    bool authed = true,
   }) async {
     var uri = Uri.parse('$kApiBaseUrl$path');
     if (query != null && query.isNotEmpty) {
       uri = uri.replace(queryParameters: query);
     }
-    final req = http.Request(method, uri);
-    req.headers['Accept'] = 'application/json';
-    if (body != null) {
-      req.headers['Content-Type'] = 'application/json';
-      req.body = jsonEncode(body);
+
+    // An http.Request can only be sent once, so build a fresh one per attempt.
+    Future<http.Response> send(String? token) async {
+      final req = http.Request(method, uri);
+      req.headers['Accept'] = 'application/json';
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      if (body != null) {
+        req.headers['Content-Type'] = 'application/json';
+        req.body = jsonEncode(body);
+      }
+      final streamed = await _client.send(req).timeout(_timeout);
+      return http.Response.fromStream(streamed).timeout(_timeout);
     }
 
     http.Response res;
     try {
-      final streamed = await _client.send(req).timeout(_timeout);
-      res = await http.Response.fromStream(streamed).timeout(_timeout);
+      String? token;
+      if (authed) {
+        token = await _auth.accessToken;
+        if (token == null) {
+          throw const ApiException(401, 'You are signed out. Please sign in again.');
+        }
+      }
+      res = await send(token);
+      if (authed && res.statusCode == 401 && await _auth.refresh()) {
+        res = await send(await _auth.accessToken);
+      }
+    } on ApiException {
+      rethrow;
     } on TimeoutException {
-      throw ApiException(
-          0, 'The server at $kApiBaseUrl did not respond in time.');
+      throw ApiException(0, 'The server at $kApiBaseUrl did not respond in time.');
     } on Exception {
       throw ApiException(
         0,
-        'Could not reach the server at $kApiBaseUrl. Check that the phone is '
-        'on the same Wi-Fi and the server is running.',
+        'Could not reach the server at $kApiBaseUrl. Check your internet '
+        'connection and that the server is running.',
       );
     }
 
@@ -393,24 +417,30 @@ class BreatheApi {
     }
     if (res.statusCode >= 200 && res.statusCode < 300) return data;
 
+    if (res.statusCode == 401 && authed) {
+      _userId = null;
+      throw const ApiException(401, 'Your session has expired. Please sign in again.');
+    }
+
     final message = (data is Map && data['error'] is String)
         ? data['error'] as String
         : 'Request failed with status ${res.statusCode}.';
     throw ApiException(res.statusCode, message);
   }
 
-  // ---- Health -------------------------------------------------------------
+  // ---- Health (public) -----------------------------------------------------
   Future<bool> health() async {
-    final data = _obj(await _request('GET', '/api/health'));
+    final data = _obj(await _request('GET', '/api/health', authed: false));
     return data['status'] == 'ok';
   }
 
-  // ---- Techniques ----------------------------------------------------------
+  // ---- Techniques (public) -------------------------------------------------
   Future<List<ApiTechnique>> listTechniques({bool includeInactive = false}) async {
     final data = _obj(await _request(
       'GET',
       '/api/techniques',
       query: includeInactive ? {'include_inactive': 'true'} : null,
+      authed: false,
     ));
     return _objList(data['techniques'])
         .map((j) => ApiTechnique.fromJson(j))
@@ -419,61 +449,35 @@ class BreatheApi {
 
   /// [ref] is the numeric id or the slug.
   Future<ApiTechnique> getTechnique(String ref) async {
-    final data = _obj(await _request('GET', '/api/techniques/${_seg(ref)}'));
+    final data = _obj(
+        await _request('GET', '/api/techniques/${_seg(ref)}', authed: false));
     return ApiTechnique.fromJson(_obj(data['technique']));
   }
 
   // ---- Users ---------------------------------------------------------------
-  Future<ApiUser> createUser({required String displayName, String? email}) async {
-    final data = _obj(await _request('POST', '/api/users', body: {
-      'display_name': displayName,
-      if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
-    }));
-    return ApiUser.fromJson(_obj(data['user']));
-  }
-
   Future<ApiUser> getUser(String userId) async {
     final data = _obj(await _request('GET', '/api/users/${_seg(userId)}'));
     return ApiUser.fromJson(_obj(data['user']));
   }
 
-  /// Returns this device's user id, creating the user on first launch.
+  /// Returns the signed-in user's id. Throws ApiException(401) if signed out.
+  /// ([displayName] is ignored now; kept so existing callers still compile.)
   Future<String> ensureUser({String displayName = 'Breathe user'}) async {
-    final cached = _userId;
-    if (cached != null) return cached;
-    _userFuture ??= _loadOrCreateUser(displayName);
-    try {
-      final id = await _userFuture!;
-      _userId = id;
-      return id;
-    } catch (_) {
-      _userFuture = null; // allow a retry
-      rethrow;
+    // Read every time so switching Google accounts never uses a stale id.
+    final id = await _auth.userId;
+    if (id == null || id.isEmpty) {
+      _userId = null;
+      throw const ApiException(401, 'You are signed out. Please sign in again.');
     }
+    _userId = id;
+    return id;
   }
 
-  Future<String> _loadOrCreateUser(String displayName) async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(_userIdKey);
-    if (saved != null && saved.isNotEmpty) {
-      try {
-        return (await getUser(saved)).id;
-      } on ApiException catch (e) {
-        // 404/400: saved user no longer exists (e.g. database was reset).
-        if (e.statusCode != 404 && e.statusCode != 400) rethrow;
-      }
-    }
-    final user = await createUser(displayName: displayName);
-    await prefs.setString(_userIdKey, user.id);
-    return user.id;
-  }
-
-  /// Forget the user stored on this device (next call creates a new one).
+  /// Clears the cached id and the old pre-sign-in id. Call after signing out.
   Future<void> resetLocalUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_userIdKey);
     _userId = null;
-    _userFuture = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_legacyUserIdKey);
   }
 
   Future<ApiUser> getCurrentUser() async => getUser(await ensureUser());
@@ -612,6 +616,35 @@ class BreatheApi {
           ? 'completed'
           : (result.abandoned ? 'abandoned' : null),
     );
+  }
+
+  /// Uploads a batch of BLE readings for an in-progress session.
+  /// The backend accepts null detected_phase values; these are retained as
+  /// sensor samples but excluded from phase-accuracy calculations.
+  Future<Map<String, dynamic>> uploadBandReadings(
+    String sessionId,
+    List<Map<String, dynamic>> readings,
+  ) async {
+    if (readings.isEmpty) return const <String, dynamic>{};
+    if (readings.length > 200) {
+      throw const ApiException(-1, 'A readings batch cannot exceed 200 items.');
+    }
+    final uid = await ensureUser();
+    final data = _obj(await _request(
+      'POST',
+      '/api/users/${_seg(uid)}/sessions/${_seg(sessionId)}/readings',
+      body: {'readings': readings},
+    ));
+    return data;
+  }
+
+  /// Current server-side session accuracy and latest accepted BLE sample.
+  Future<Map<String, dynamic>> getLiveSessionState(String sessionId) async {
+    final uid = await ensureUser();
+    return _obj(await _request(
+      'GET',
+      '/api/users/${_seg(uid)}/sessions/${_seg(sessionId)}/live',
+    ));
   }
 
   /// History, newest first. [technique] is an id or slug.
