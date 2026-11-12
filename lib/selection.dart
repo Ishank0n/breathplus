@@ -121,10 +121,17 @@ class _ModeCard extends StatelessWidget {
           SizedBox(
             height: 150,
             child: Center(
-              child: GlyphIcon(
-                celestial: world.celestial,
-                kind: glyphKind,
-                size: 110,
+             child: glyphKind == 1
+        ? Image.asset(
+        'assets/spiral_galaxy.png',
+        width: 110,
+        height: 110,
+        fit: BoxFit.contain,
+                      )
+        : GlyphIcon(
+        celestial: world.celestial,
+        kind: glyphKind,
+        size: 110,
               ),
             ),
           ),
