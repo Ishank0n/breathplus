@@ -65,14 +65,17 @@ class ModeSelectionScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 _ModeCard(
-                  world: celestialWorld,
-                  title: 'Space',
-                  subtitle: 'Light up the night sky with every breath.',
-                  button: 'Choose Space',
-                  glyphKind: 1,
-                  gradient: const [Color(0xFF1F1650), Color(0xFF0E0A26)],
-                  border: const Color(0x4DAA96FF),
-                  onTap: onSpace ?? () {}, // TODO: hook up later
+  world: celestialWorld,
+  title: 'Space',
+  subtitle: 'Drift through deep space, one breath at a time.',
+  button: 'Choose Space',
+  glyphKind: 1,
+  gradient: const [
+    Color(0xFF0F2544), // Deep ocean/midnight blue (top)
+    Color(0xFF071120), // Abyssal dark navy (bottom)
+                      ],
+  border: const Color(0x4D60A5FA), // Crisp translucent starlight blue
+  onTap: onSpace ?? () {},
                 ),
               ],
             ),
