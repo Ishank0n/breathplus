@@ -153,10 +153,10 @@ class _Segmented extends StatelessWidget {
       height: 50,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0x661F4A3A),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xAA2E6B52), width: 1.2),
-      ),
+  color: const Color(0x66152B5C), // Updated Deep Space translucent container
+  borderRadius: BorderRadius.circular(28),
+  border: Border.all(color: const Color(0xAA2F5AA8), width: 1.2), // Updated border color
+),
       child: Stack(
         children: [
           AnimatedAlign(
