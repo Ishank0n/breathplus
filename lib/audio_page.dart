@@ -168,7 +168,7 @@ class _Segmented extends StatelessWidget {
               heightFactor: 1,
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppColors.mint,
+                  color: AppColors.cyan,
                   borderRadius: BorderRadius.circular(24),
                 ),
               ),
@@ -188,7 +188,7 @@ class _Segmented extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: sel ? AppColors.dark : AppColors.mint,
+                          color: sel ? AppColors.dark : AppColors.cyan,
                         ),
                         child: Text(labels[i]),
                       ),
