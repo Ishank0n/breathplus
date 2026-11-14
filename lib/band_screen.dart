@@ -226,16 +226,16 @@ const plantsWorld = World(
 
 const celestialWorld = World(
   celestial: true,
-  bgTop: Color(0xFF221A5C),
-  bgBottom: Color(0xFF0A0724),
-  card: Color(0xFF2A2260),
-  panel: Color(0x593C3282),
-  line: Color(0x47AA96FF),
-  text: Color(0xFFF2EEFF),
-  muted: Color(0xFFB9ACF5),
-  accent: Color(0xFFBDA7FF),
-  ink: Color(0xFF1A1240),
-  navBg: Color(0xFF2A2260),
+  bgTop: Color(0xFF0C1A3D),      // Orbit Navy
+  bgBottom: Color(0xFF050B1F),   // Deep Space
+  card: Color(0xFF0C1A3D),       // Orbit Navy
+  panel: Color(0x66152B5C),      // Translucent Nebula Blue
+  line: Color(0xAA2F5AA8),       // Border Blue
+  text: Color(0xFFFFFFFF),       // White
+  muted: Color(0xFFA8C8F0),      // Soft Ice Blue (harmonized with Nebula Cyan)
+  accent: Color(0xFF5CB8FF),     // Nebula Cyan
+  ink: Color(0xFF050B1F),        // Deep Space
+  navBg: Color(0xFF0C1A3D),      // Orbit Navy
   tabs: ['Home', 'Collection', 'Stats', 'Profile'],
   techniques: [
     Technique('Box Breathing', '4-4-4-4 · 5 min · Collected · 6/10 to grow', 0),
@@ -353,18 +353,57 @@ class GlyphPainter extends CustomPainter {
         c.drawCircle(const Offset(66, 68), 6, crater);
         c.drawCircle(const Offset(68, 42), 4, crater);
         break;
-      case 1: // ringed planet
-        c.drawCircle(const Offset(55, 55), 24, _fill(const Color(0xFFD9A8FF)));
+      case 1: // comet, falling down-right at 40°
         c.save();
-        c.translate(55, 57);
-        c.rotate(-14 * math.pi / 180);
-        c.drawOval(
-          Rect.fromCenter(center: Offset.zero, width: 92, height: 24),
+        c.translate(55, 55);
+        c.rotate(40 * math.pi / 180);
+
+        // soft tapered tail (white fading to transparent)
+        final tail = Path()
+          ..moveTo(20, -9)
+          ..quadraticBezierTo(-10, -6, -52, 0)
+          ..quadraticBezierTo(-10, 6, 20, 9)
+          ..close();
+        c.drawPath(
+          tail,
           Paint()
-            ..color = const Color(0xFFF6D48A)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 6,
+            ..shader = const LinearGradient(
+              colors: [Color(0x00FFFFFF), Color(0x66F2F2F2), Color(0xFFFFFFFF)],
+              stops: [0.0, 0.55, 1.0],
+            ).createShader(const Rect.fromLTRB(-52, -9, 20, 9)),
         );
+
+        // thin streaks
+        c.drawLine(
+          const Offset(14, -5),
+          const Offset(-38, -4),
+          Paint()
+            ..color = const Color(0x99FFFFFF)
+            ..strokeWidth = 2
+            ..strokeCap = StrokeCap.round,
+        );
+        c.drawLine(
+          const Offset(14, 5),
+          const Offset(-30, 4.5),
+          Paint()
+            ..color = const Color(0x66E8E8E8)
+            ..strokeWidth = 2
+            ..strokeCap = StrokeCap.round,
+        );
+
+        // glow + head
+        c.drawCircle(const Offset(20, 0), 17, _fill(const Color(0x33FFFFFF)));
+        c.drawCircle(
+          const Offset(20, 0),
+          10,
+          Paint()
+            ..shader = const RadialGradient(
+              colors: [Color(0xFFFFFFFF), Color(0xFFE6E6E6)],
+            ).createShader(
+                Rect.fromCircle(center: const Offset(20, 0), radius: 10)),
+        );
+        c.drawCircle(const Offset(17, -3), 3, _fill(Colors.white));
+
         c.restore();
         break;
       case 2: // orbs
@@ -439,14 +478,14 @@ class ChooseWorldScreen extends StatelessWidget {
                   onTap: () => _open(context, plantsWorld),
                 ),
                 const SizedBox(height: 18),
-                _WorldCard(
+               _WorldCard(
                   world: celestialWorld,
                   title: 'Celestial',
                   subtitle: 'Light up the night sky with every breath.',
                   button: 'Choose Celestial',
                   glyphKind: 1,
-                  gradient: const [Color(0xFF1F1650), Color(0xFF0E0A26)],
-                  border: const Color(0x4DAA96FF),
+                  gradient: const [Color(0xFF0C1A3D), Color(0xFF050B1F)],
+                  border: const Color(0xAA2F5AA8),
                   onTap: () => _open(context, celestialWorld),
                 ),
               ],
@@ -456,6 +495,39 @@ class ChooseWorldScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Small static background stars for the Celestial card.
+class CardStarsPainter extends CustomPainter {
+  // x, y (fractions of the card), radius, opacity
+  static const _stars = <List<double>>[
+    [0.08, 0.07, 1.4, 0.90],
+    [0.22, 0.20, 1.0, 0.60],
+    [0.38, 0.06, 1.2, 0.75],
+    [0.55, 0.15, 0.9, 0.55],
+    [0.72, 0.07, 1.6, 0.95],
+    [0.90, 0.18, 1.1, 0.70],
+    [0.12, 0.42, 0.9, 0.50],
+    [0.86, 0.40, 1.3, 0.80],
+    [0.94, 0.58, 0.9, 0.55],
+    [0.06, 0.62, 1.1, 0.65],
+    [0.80, 0.30, 0.8, 0.45],
+    [0.30, 0.34, 0.8, 0.45],
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final s in _stars) {
+      canvas.drawCircle(
+        Offset(s[0] * size.width, s[1] * size.height),
+        s[2],
+        Paint()..color = Color.fromRGBO(255, 255, 255, s[3]),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(CardStarsPainter old) => false;
 }
 
 class _WorldCard extends StatelessWidget {
@@ -480,38 +552,49 @@ class _WorldCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: border),
         gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: gradient),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: 150,
-            child: Center(child: GlyphIcon(celestial: world.celestial, kind: glyphKind, size: 110)),
-          ),
-          Text(title, style: serif(24, color: Colors.white)),
-          const SizedBox(height: 2),
-          Text(subtitle, style: TextStyle(color: world.muted, fontSize: 14)),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: onTap,
-              style: FilledButton.styleFrom(
-                backgroundColor: world.accent,
-                foregroundColor: world.ink,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: const StadiumBorder(),
-                textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(21),
+        child: Stack(
+          children: [
+            if (world.celestial)
+              Positioned.fill(child: CustomPaint(painter: CardStarsPainter())),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    height: 150,
+                    child: Center(child: GlyphIcon(celestial: world.celestial, kind: glyphKind, size: 110)),
+                  ),
+                  Text(title, style: serif(24, color: Colors.white)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: TextStyle(color: world.muted, fontSize: 14)),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: onTap,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: world.accent,
+                        foregroundColor: world.ink,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: const StadiumBorder(),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                      ),
+                      child: Text(button),
+                    ),
+                  ),
+                ],
               ),
-              child: Text(button),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
