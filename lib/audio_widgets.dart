@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'main.dart';
 import 'audio_state.dart';
 
-/// Translucent green card used across the audio pages.
+/// Translucent card used across the audio pages.
 class AudioCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
@@ -23,9 +23,9 @@ class AudioCard extends StatelessWidget {
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
-        color: const Color(0x661F4A3A),
+        color: const Color(0x66152B5C),
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: const Color(0xAA2E6B52), width: 1.2),
+        border: Border.all(color: const Color(0xAA2F5AA8), width: 1.2),
       ),
       child: child,
     );
@@ -53,9 +53,6 @@ class AudioHeading extends StatelessWidget {
   }
 }
 
-/// Light-grey seek bar with a dark thumb (tap or drag to seek).
-/// Slim mint seek bar. Tap or drag to seek; the thumb grows while dragging
-/// and the seek is applied when the finger lifts.
 class SeekBar extends StatefulWidget {
   final double value; // 0..1
   final ValueChanged<double> onChanged;
@@ -111,7 +108,7 @@ class _SeekBarState extends State<SeekBar> {
                     width: usable,
                     height: active ? 6 : 4,
                     decoration: BoxDecoration(
-                      color: const Color(0x552E6B52),
+                      color: const Color(0x552F5AA8),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -296,13 +293,13 @@ class TrackTile extends StatelessWidget {
             ),
           ),
         ),
-        Container(height: 1, color: const Color(0x992E6B52)),
+        Container(height: 1, color: const Color(0x992F5AA8)),
       ],
     );
   }
 }
 
-/// Pill button (filled mint or outlined).
+/// Pill button (filled accent or outlined).
 class AudioPillButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
@@ -368,7 +365,7 @@ void audioSnack(
   messenger.showSnackBar(
     SnackBar(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: const Color(0xFF1F4A3A),
+      backgroundColor: const Color(0xFF152B5C),
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
