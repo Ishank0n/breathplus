@@ -94,17 +94,13 @@ class ImportResult {
 }
 
 /// ---------------------------------------------------------------------------
-/// CONTROLLER  (shared by Library, Frequencies and My music)
-///
-/// Imported tracks are copied into the app's own storage and remembered
-/// between launches. They play through `just_audio`. Library tracks have no
-/// audio files yet, so they still use the simulated timer.
+/// CONTROLLER (Handles imported tracks & Frequencies/Tones)
 /// ---------------------------------------------------------------------------
 AudioController get audio => AudioController.instance;
 
 class AudioController extends ChangeNotifier {
   AudioController._() {
-    current = library.first;
+    current = null; // Starts with no track selected until user imports or chooses one
     _ready = _init();
   }
 
@@ -114,16 +110,6 @@ class AudioController extends ChangeNotifier {
   static const _prefsChosen = 'chosen_tracks_v1';
   static const _folderName = 'imported_audio';
   static const _undoWindow = Duration(seconds: 6);
-
-  /// Placeholder plant sounds
-  final List<AudioTrack> library = const [
-    AudioTrack(id: 'lib_rain', title: 'Rain on Leaves', category: 'Nature', seconds: 480),
-    AudioTrack(id: 'lib_dawn', title: 'Forest Dawn', category: 'Nature', seconds: 390),
-    AudioTrack(id: 'lib_stream', title: 'Stream Hush', category: 'Nature', seconds: 600),
-    AudioTrack(id: 'lib_bamboo', title: 'Wind in Bamboo', category: 'Ambient', seconds: 435),
-    AudioTrack(id: 'lib_birds', title: 'Morning Birdsong', category: 'Nature', seconds: 555),
-    AudioTrack(id: 'lib_thunder', title: 'Soft Thunder', category: 'Ambient', seconds: 720),
-  ];
 
   final List<AudioTrack> imported = [];
   final Set<String> chosen = {};
@@ -151,14 +137,13 @@ class AudioController extends ChangeNotifier {
   int _loadToken = 0;
   bool _loading = false;
 
-  List<AudioTrack> get allTracks => [...library, ...imported];
+  List<AudioTrack> get allTracks => imported;
 
   bool _isFile(AudioTrack? t) => !kIsWeb && t?.path != null;
 
   // ---- Startup ----------------------------------------------------------------
   Future<void> _init() async {
     try {
-      // Lets audio play even when the iPhone's silent switch is on.
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
     } catch (e) {
@@ -198,8 +183,6 @@ class AudioController extends ChangeNotifier {
       for (final item in jsonDecode(raw) as List) {
         final m = item as Map<String, dynamic>;
         final name = m['file'] as String;
-        // Only the file name is stored: on iOS the app folder path can change
-        // between updates, so the full path is rebuilt on every launch.
         final file = File('${dir.path}/$name');
         if (!await file.exists()) {
           missing = true;
@@ -220,7 +203,6 @@ class AudioController extends ChangeNotifier {
     }
     chosen.addAll(prefs.getStringList(_prefsChosen) ?? const []);
 
-    // Clean up files nothing points to (e.g. app closed during an undo window).
     await for (final entity in dir.list()) {
       if (entity is File && !keep.contains(_fileName(entity.path))) {
         try {
@@ -268,7 +250,6 @@ class AudioController extends ChangeNotifier {
   void _onPlayerState(PlayerState s) {
     if (!_isFile(current) || _loading) return;
     if (s.processingState == ProcessingState.completed) {
-      // Same behaviour as before: an imported track stops at the end.
       isPlaying = false;
       progress = 0;
       position = Duration.zero;
@@ -277,7 +258,6 @@ class AudioController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    // Keeps the UI right when the system pauses audio (calls, headphones out).
     if (s.processingState == ProcessingState.ready && s.playing != isPlaying) {
       isPlaying = s.playing;
       notifyListeners();
@@ -344,10 +324,9 @@ class AudioController extends ChangeNotifier {
     _loading = true;
     try {
       final d = await _player.setFilePath(t.path!, initialPosition: from);
-      if (token != _loadToken) return; // another track was tapped meanwhile
+      if (token != _loadToken) return;
       duration = d;
       _loading = false;
-      // play() completes only when playback stops, so it isn't awaited.
       if (isPlaying) unawaited(_player.play());
       notifyListeners();
     } catch (e) {
@@ -374,7 +353,6 @@ class AudioController extends ChangeNotifier {
     _timer = null;
   }
 
-  /// Simulated progress for library tracks, which have no audio files yet.
   void _syncTimer() {
     _stopTimer();
     final t = current;
@@ -427,7 +405,7 @@ class AudioController extends ChangeNotifier {
     if (current?.id == t.id) {
       _loadToken++;
       _loading = false;
-      current = library.first;
+      current = imported.isNotEmpty ? imported.first : null;
       progress = 0;
       position = Duration.zero;
       duration = null;
@@ -448,7 +426,6 @@ class AudioController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The file is kept until the Undo window has passed.
   void _scheduleFileDelete(AudioTrack t) {
     final path = t.path;
     if (kIsWeb || path == null) return;
@@ -466,14 +443,12 @@ class AudioController extends ChangeNotifier {
     return dot > 0 ? fileName.substring(0, dot) : fileName;
   }
 
-  /// Opens the system file picker, copies the chosen audio into the app's
-  /// storage and adds it to My music.
   Future<ImportResult> importAudio() async {
     if (importing) return const ImportResult(cancelled: true);
     importing = true;
     notifyListeners();
 
-    AudioPlayer? probe; // reads each file's length without touching playback
+    AudioPlayer? probe;
     try {
       await _ready;
 
@@ -523,8 +498,6 @@ class AudioController extends ChangeNotifier {
           try {
             final ext = (f.extension ?? 'audio').toLowerCase();
             final dest = '${dir!.path}/$id.$ext';
-            // The picker's path is a temporary copy the system may delete,
-            // so the file is copied into the app's own documents folder.
             await File(f.path!).copy(dest);
             savedPath = dest;
           } catch (e) {
@@ -536,9 +509,7 @@ class AudioController extends ChangeNotifier {
             probe ??= AudioPlayer();
             final d = await probe.setFilePath(savedPath);
             seconds = d?.inSeconds ?? 0;
-          } catch (_) {
-            // Unreadable length is fine; the track can still be tried.
-          }
+          } catch (_) {}
         }
 
         imported.add(
