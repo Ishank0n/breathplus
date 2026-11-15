@@ -4,9 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-// Re-uses Pressable, kSerif, kSerifFallback, auth, AuthGate (main.dart) and StatsColors
+// Re-uses Pressable, kSerif, kSerifFallback, auth, AuthGate and AppColors (main.dart)
 import 'main.dart';
-import 'stats_page.dart';
 import 'vitals_service.dart';
 import 'reminder_service.dart';
 
@@ -21,14 +20,16 @@ class ProfileData {
       'diagnose or treat any condition.';
 }
 
+/// Colors for this page. They now come from the shared AppColors palette
+/// (Nebula Cyan / Deep Space / Orbit Navy) instead of the old teal StatsColors.
 class _C {
-  static const bg = StatsColors.card;
-  static const border = StatsColors.cardBorder;
-  static const mint = StatsColors.mint;
-  static const white = StatsColors.white;
-  static const dark = Color(0xFF0E2A24);
-  static const divider = Color(0xFF2A4B53);
-  static const subtle = Color(0xFF8FD0BE);
+  static const bg = AppColors.card; // 0xFF152B5C
+  static const border = AppColors.cardBorder; // 0xFF2F5AA8
+  static const mint = AppColors.mint; // 0xFF5CB8FF (Nebula Cyan)
+  static const white = AppColors.white; // 0xFFFFFFFF
+  static const dark = AppColors.dark; // 0xFF050B1F (Deep Space)
+  static const divider = Color(0xFF224282); // between card and border
+  static const subtle = AppColors.mintText; // 0xFF9FD4FF
   static const avatar = Color(0xFFB9A2FF);
   static const avatarText = Color(0xFF1B1740);
   static const danger = Color(0xFFFF9C94);
@@ -381,7 +382,7 @@ class _ProfilePageState extends State<ProfilePage>
       ),
     ];
 
-    // Own opaque background so the shell's green gradient never shows through.
+    // Own opaque background so the shell's gradient never shows through.
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -389,7 +390,7 @@ class _ProfilePageState extends State<ProfilePage>
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [StatsColors.bgTop, StatsColors.bgBottom],
+          colors: [AppColors.bgTop, AppColors.bgBottom],
         ),
       ),
       child: SafeArea(
@@ -554,7 +555,8 @@ class _RowTapState extends State<_RowTap> {
       onTap: widget.onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
-        color: _down ? const Color(0x1A7FE3C5) : Colors.transparent,
+        // Pressed highlight: Nebula Cyan at 10% (was a teal tint).
+        color: _down ? const Color(0x1A5CB8FF) : Colors.transparent,
         child: widget.child,
       ),
     );
@@ -679,7 +681,8 @@ class _Toggle extends StatelessWidget {
       height: 26,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: value ? _C.mint : const Color(0xFF2B4D55),
+        // Off state: muted navy (was a gray-teal).
+        color: value ? _C.mint : const Color(0xFF2A4580),
         borderRadius: BorderRadius.circular(14),
       ),
       child: AnimatedAlign(
