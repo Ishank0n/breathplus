@@ -162,9 +162,13 @@ class _EmptyState extends StatelessWidget {
             Container(
               width: 76,
               height: 76,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0x661F4A3A),
+                color: const Color(0x66152B5C), // card navy (was green)
+                border: Border.all(
+                  color: AppColors.cardBorder,
+                  width: 1.2,
+                ),
               ),
               child: const Icon(
                 Icons.library_music_outlined,
