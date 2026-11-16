@@ -3,25 +3,27 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// Re-uses Pressable, kSerif and kSerifFallback from main.dart
+// Re-uses Pressable, kSerif, kSerifFallback and AppColors from main.dart
 import 'main.dart';
 import 'stats_repository.dart';
 
 /// ---------------------------------------------------------------------------
-/// THEME (Statistics uses a teal palette)
+/// THEME (Statistics now shares the app's navy / Nebula Cyan palette)
 /// ---------------------------------------------------------------------------
+/// Most values point at AppColors so the whole app stays in sync. main.dart's
+/// RootShell also reads this class for the Stats and Profile tabs.
 class StatsColors {
-  static const bgTop = Color(0xFF14292F);
-  static const bgBottom = Color(0xFF0E1E23);
-  static const card = Color(0xFF1B363E);
-  static const cardBorder = Color(0xFF2D5159);
-  static const mint = Color(0xFF7FE3C5);
-  static const bar = Color(0xFF2B4D55);
-  static const white = Color(0xFFF1F7F5);
-  static const muted = Color(0xFFA9C7C1);
-  static const label = Color(0xFF7FC4B4);
-  static const navBg = Color(0xFF17323A);
-  static const navBorder = Color(0x662D5159);
+  static const bgTop = AppColors.bgTop; // 0xFF0C1A3D Orbit Navy
+  static const bgBottom = AppColors.bgBottom; // 0xFF050B1F Deep Space
+  static const card = AppColors.card; // 0xFF152B5C
+  static const cardBorder = AppColors.cardBorder; // 0xFF2F5AA8
+  static const mint = AppColors.mint; // 0xFF5CB8FF Nebula Cyan
+  static const bar = Color(0xFF2A4580);
+  static const white = AppColors.white; // 0xFFFFFFFF
+  static const muted = AppColors.mintText; // 0xFF9FD4FF
+  static const label = Color(0xFF7DB4E6);
+  static const navBg = AppColors.navBg; // 0xFF0C1A3D
+  static const navBorder = Color(0x662F5AA8);
 }
 
 /// ---------------------------------------------------------------------------
@@ -467,7 +469,7 @@ class _PeriodSelector extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // Sliding mint pill
+          // Sliding accent pill
           AnimatedAlign(
             duration: const Duration(milliseconds: 320),
             curve: Curves.easeOutCubic,
@@ -498,7 +500,7 @@ class _PeriodSelector extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: isSel ? const Color(0xFF0E2A24) : StatsColors.mint,
+                          color: isSel ? AppColors.dark : StatsColors.mint,
                         ),
                         child: Text(p.label),
                       ),
@@ -714,7 +716,7 @@ class _LinePainter extends CustomPainter {
 
 class _BarsPainter extends CustomPainter {
   final List<double> v; // 0..1
-  final int? highlight; // bar drawn in mint (default: the last one)
+  final int? highlight; // bar drawn in accent colour (default: the last one)
 
   _BarsPainter(this.v, {this.highlight});
 
