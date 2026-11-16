@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// Re-uses AppColors, kSerif, Technique, PlantIcon and Pressable from main.dart
+// Re-uses AppColors, kSerif, Technique, ConstellationIcon and Pressable from main.dart
 import 'main.dart';
 import 'breathe_api.dart';
 import 'audio_state.dart';
@@ -468,7 +468,7 @@ class _SessionPageState extends State<SessionPage>
               Container(
                 width: 42,
                 height: 42,
-                decoration: const BoxDecoration(color: Color(0xFF23503F), shape: BoxShape.circle),
+                decoration: const BoxDecoration(color: Color(0xFF1D3B7C), shape: BoxShape.circle),
                 child: const Icon(Icons.music_note_rounded, color: AppColors.mint, size: 21),
               ),
               const SizedBox(width: 12),
@@ -561,9 +561,9 @@ class _SessionPageState extends State<SessionPage>
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: const Color(0xFF1F4A3A),
+          color: AppColors.card, // 0xFF152B5C
           border: Border.all(
-            color: const Color(0xFF7FD69A),
+            color: AppColors.mint, // Nebula Cyan
             width: 2,
           ),
           boxShadow: [
@@ -578,7 +578,7 @@ class _SessionPageState extends State<SessionPage>
             ),
           ],
         ),
-        child: PlantIcon(type: t.plant, size: 136),
+        child: ConstellationIcon(type: t.constellation, size: 136),
       ),
     );
   }
@@ -652,7 +652,7 @@ class _SessionPageState extends State<SessionPage>
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0x661F4A3A),
+                    color: const Color(0x66152B5C),
                     border: Border.all(color: AppColors.cardBorder, width: 1.3),
                   ),
                   child: const Text(
@@ -683,7 +683,7 @@ class _SessionPageState extends State<SessionPage>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF23503F),
+                  color: const Color(0xFF1D3B7C),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -782,7 +782,7 @@ class _SessionPageState extends State<SessionPage>
                   child: LinearProgressIndicator(
                     value: breathLevel,
                     minHeight: 8,
-                    backgroundColor: const Color(0xFF2E6B52),
+                    backgroundColor: AppColors.cardBorder,
                     valueColor:
                         const AlwaysStoppedAnimation<Color>(AppColors.mint),
                   ),
@@ -1029,9 +1029,9 @@ class _SessionCard extends StatelessWidget {
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
-        color: const Color(0x661F4A3A),
+        color: const Color(0x66152B5C),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xAA2E6B52), width: 1.2),
+        border: Border.all(color: const Color(0xAA2F5AA8), width: 1.2),
       ),
       child: child,
     );
@@ -1057,7 +1057,7 @@ class _RingPainter extends CustomPainter {
     final track = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
-      ..color = const Color(0xFF2E6B52);
+      ..color = AppColors.cardBorder;
     canvas.drawArc(r, 0, math.pi * 2, false, track);
 
     final prog = Paint()
