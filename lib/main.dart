@@ -13,7 +13,7 @@ import 'audio_page.dart';
 import 'selection.dart';
 import 'vitals_service.dart';
 import 'auth_service.dart';
-
+import 'garden_page.dart';
 
 final AuthService auth = AuthService();
 
@@ -384,6 +384,31 @@ class BreatheApp extends StatelessWidget {
 enum TechniqueStatus { notCollected, collected, grown }
 
 enum PlantType { spiky, purple, bush, mushroom }
+
+// Keep this list and hash identical to SessionPage so each technique has
+// the same default flower everywhere in the app.
+const List<String> _techniqueFlowers = [
+  '🌹', // Rose
+  '🌻', // Sunflower
+  '🌷', // Tulip
+  '🌼', // Daisy
+  '🌸', // Cherry Blossom
+  '🪻', // Lavender
+  '🌺', // Hibiscus
+  '💮', // Blossom
+  '🪷', // Lotus
+];
+
+String _flowerForTechnique(Technique technique) {
+  final key = technique.slug ??
+      technique.id?.toString() ??
+      technique.name;
+  var hash = 0;
+  for (final code in key.codeUnits) {
+    hash = (hash * 31 + code) & 0x7fffffff;
+  }
+  return _techniqueFlowers[hash % _techniqueFlowers.length];
+}
 
 int _minutesFromSeconds(int seconds) => math.max(1, (seconds / 60).round());
 
@@ -789,7 +814,9 @@ class _RootShellState extends State<RootShell> {
       case 0:
         return const HomePage(key: ValueKey('home'));
       case 1:
-        return const PlaceholderPage(key: ValueKey('garden'), title: 'Garden');
+        return const GardenPage(
+          key: ValueKey('garden'),
+        );
       case 2:
         return const AudioPage(key: ValueKey('audio'));
       case 3:
@@ -1391,7 +1418,7 @@ class _HomePageState extends State<HomePage>
           const SizedBox(height: 10),
           Row(
             children: [
-              PlantIcon(type: t.plant, size: 48),
+              Text(_flowerForTechnique(t), style: const TextStyle(fontSize: 42)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1706,7 +1733,13 @@ class _TechniqueTile extends StatelessWidget {
               color: locked ? const Color(0x33143225) : AppColors.tile,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: PlantIcon(type: technique.plant, size: 38, faded: locked),
+            child: Opacity(
+              opacity: locked ? 0.4 : 1,
+              child: Text(
+                _flowerForTechnique(technique),
+                style: const TextStyle(fontSize: 34),
+              ),
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(

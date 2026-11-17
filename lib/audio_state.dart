@@ -32,6 +32,7 @@ class AudioTrack {
   final int seconds;
   final bool imported;
   final String? path; // file path of imported audio (null on web)
+  final String? assetPath; // bundled audio asset for Library tracks
   final int? bytes;
   final String? ext;
 
@@ -42,6 +43,7 @@ class AudioTrack {
     required this.seconds,
     this.imported = false,
     this.path,
+    this.assetPath,
     this.bytes,
     this.ext,
   });
@@ -75,8 +77,9 @@ class ImportResult {
 /// CONTROLLER  (shared by Library and My music)
 ///
 /// Imported tracks are copied into the app's own storage and remembered
-/// between launches. They play through `just_audio`. Library tracks have no
-/// audio files yet, so they still use the simulated timer.
+/// between launches. Library tracks play bundled assets through `just_audio`.
+/// Add the corresponding MP3 files under assets/audio/ using the filenames
+/// listed below. Imported tracks continue to work independently.
 /// ---------------------------------------------------------------------------
 AudioController get audio => AudioController.instance;
 
@@ -93,14 +96,15 @@ class AudioController extends ChangeNotifier {
   static const _folderName = 'imported_audio';
   static const _undoWindow = Duration(seconds: 6);
 
-  /// Placeholder plant sounds
+  /// Bundled Library tracks. Add these files to assets/audio/ and register
+  /// that directory in pubspec.yaml. The filenames are intentionally stable.
   final List<AudioTrack> library = const [
-    AudioTrack(id: 'lib_rain', title: 'Rain on Leaves', category: 'Nature', seconds: 480),
-    AudioTrack(id: 'lib_dawn', title: 'Forest Dawn', category: 'Nature', seconds: 390),
-    AudioTrack(id: 'lib_stream', title: 'Stream Hush', category: 'Nature', seconds: 600),
-    AudioTrack(id: 'lib_bamboo', title: 'Wind in Bamboo', category: 'Ambient', seconds: 435),
-    AudioTrack(id: 'lib_birds', title: 'Morning Birdsong', category: 'Nature', seconds: 555),
-    AudioTrack(id: 'lib_thunder', title: 'Soft Thunder', category: 'Ambient', seconds: 720),
+    AudioTrack(id: 'lib_rain', title: 'Rain on Leaves', category: 'Nature', seconds: 480, assetPath: 'assets/audio/rain_on_leaves.mp3'),
+    AudioTrack(id: 'lib_dawn', title: 'Forest Dawn', category: 'Nature', seconds: 390, assetPath: 'assets/audio/forest_dawn.mp3'),
+    AudioTrack(id: 'lib_stream', title: 'Stream Hush', category: 'Nature', seconds: 600, assetPath: 'assets/audio/stream_hush.mp3'),
+    AudioTrack(id: 'lib_bamboo', title: 'Wind in Bamboo', category: 'Ambient', seconds: 435, assetPath: 'assets/audio/wind_in_bamboo.mp3'),
+    AudioTrack(id: 'lib_birds', title: 'Morning Birdsong', category: 'Nature', seconds: 555, assetPath: 'assets/audio/morning_birdsong.mp3'),
+    AudioTrack(id: 'lib_thunder', title: 'Soft Thunder', category: 'Ambient', seconds: 720, assetPath: 'assets/audio/soft_thunder.mp3'),
   ];
 
   final List<AudioTrack> imported = [];
@@ -129,6 +133,9 @@ class AudioController extends ChangeNotifier {
   List<AudioTrack> get allTracks => [...library, ...imported];
 
   bool _isFile(AudioTrack? t) => !kIsWeb && t?.path != null;
+
+  bool _hasAudioSource(AudioTrack? t) =>
+      t != null && (t.assetPath != null || _isFile(t));
 
   // ---- Startup ----------------------------------------------------------------
   Future<void> _init() async {
@@ -230,7 +237,7 @@ class AudioController extends ChangeNotifier {
 
   // ---- Player events ----------------------------------------------------------
   void _onPosition(Duration p) {
-    if (!_isFile(current) || _loading) return;
+    if (!_hasAudioSource(current) || _loading) return;
     position = p;
     final d = duration ?? _player.duration;
     if (d != null && d.inMilliseconds > 0) {
@@ -241,7 +248,7 @@ class AudioController extends ChangeNotifier {
   }
 
   void _onPlayerState(PlayerState s) {
-    if (!_isFile(current) || _loading) return;
+    if (!_hasAudioSource(current) || _loading) return;
     if (s.processingState == ProcessingState.completed) {
       // Same behaviour as before: an imported track stops at the end.
       isPlaying = false;
@@ -277,7 +284,7 @@ class AudioController extends ChangeNotifier {
     isPlaying = true;
     notifyListeners();
 
-    if (_isFile(t)) {
+    if (_hasAudioSource(t)) {
       _stopTimer();
       await _loadAndPlay(t);
     } else {
@@ -290,7 +297,7 @@ class AudioController extends ChangeNotifier {
 
   void _pause() {
     isPlaying = false;
-    if (_isFile(current)) unawaited(_player.pause());
+    if (_hasAudioSource(current)) unawaited(_player.pause());
     _syncTimer();
     notifyListeners();
   }
@@ -301,7 +308,7 @@ class AudioController extends ChangeNotifier {
     isPlaying = true;
     notifyListeners();
 
-    if (!_isFile(t)) {
+    if (!_hasAudioSource(t)) {
       _syncTimer();
       return;
     }
@@ -316,7 +323,9 @@ class AudioController extends ChangeNotifier {
     final token = ++_loadToken;
     _loading = true;
     try {
-      final d = await _player.setFilePath(t.path!, initialPosition: from);
+      final d = t.assetPath != null
+          ? await _player.setAsset(t.assetPath!, initialPosition: from)
+          : await _player.setFilePath(t.path!, initialPosition: from);
       if (token != _loadToken) return; // another track was tapped meanwhile
       duration = d;
       _loading = false;
@@ -326,7 +335,7 @@ class AudioController extends ChangeNotifier {
     } catch (e) {
       if (token != _loadToken) return;
       _loading = false;
-      debugPrint('Could not play "${t.title}": $e');
+      debugPrint('Could not play "${t.title}". Check that ${t.assetPath ?? t.path} exists and is registered in pubspec.yaml. Error: $e');
       isPlaying = false;
       notifyListeners();
     }
@@ -335,7 +344,7 @@ class AudioController extends ChangeNotifier {
   void seek(double v) {
     progress = v.clamp(0.0, 1.0).toDouble();
     final d = duration;
-    if (_isFile(current) && d != null) {
+    if (_hasAudioSource(current) && d != null) {
       position = d * progress;
       unawaited(_player.seek(position));
     }
@@ -347,11 +356,12 @@ class AudioController extends ChangeNotifier {
     _timer = null;
   }
 
-  /// Simulated progress for library tracks, which have no audio files yet.
+  /// Retains simulated progress only for tracks without an audio source.
+  /// Bundled Library tracks and imported files use the real audio player.
   void _syncTimer() {
     _stopTimer();
     final t = current;
-    if (!isPlaying || t == null || _isFile(t)) return;
+    if (!isPlaying || t == null || _hasAudioSource(t)) return;
     _timer = Timer.periodic(const Duration(milliseconds: 250), (_) {
       final t = current;
       if (t == null || t.seconds <= 0) return;
