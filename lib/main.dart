@@ -384,52 +384,24 @@ class BreatheApp extends StatelessWidget {
 /// ---------------------------------------------------------------------------
 enum TechniqueStatus { notCollected, collected, grown }
 
-/// The ten constellations that replace the old plants.
-enum ConstellationType {
-  cassiopeia,
-  orion,
-  ursaMajor,
-  cygnus,
-  scorpius,
-  canisMajor,
-  pegasus,
-  leo,
-  taurus,
-  draco,
-}
-
-// Keep this list and hash identical to SessionPage so each technique has
-// the same default flower everywhere in the app.
-const List<String> _techniqueFlowers = [
-  '🌹', // Rose
-  '🌻', // Sunflower
-  '🌷', // Tulip
-  '🌼', // Daisy
-  '🌸', // Cherry Blossom
-  '🪻', // Lavender
-  '🌺', // Hibiscus
-  '💮', // Blossom
-  '🪷', // Lotus
-];
-
-String _flowerForTechnique(Technique technique) {
-  final key = technique.slug ??
-      technique.id?.toString() ??
-      technique.name;
-  var hash = 0;
-  for (final code in key.codeUnits) {
-    hash = (hash * 31 + code) & 0x7fffffff;
-  }
-  return _techniqueFlowers[hash % _techniqueFlowers.length];
-}
+enum PlantType { spiky, purple, bush, mushroom }
 
 int _minutesFromSeconds(int seconds) => math.max(1, (seconds / 60).round());
 
-/// Picks the constellation for a technique from its id:
-/// 1 → Cassiopeia, 2 → Orion, ... 10 → Draco, then it repeats.
-ConstellationType _constellationFor(int? id) {
-  final n = ConstellationType.values.length;
-  return ConstellationType.values[((id ?? 1) - 1) % n];
+/// Maps the API's plant_key to the plant drawn by PlantIcon.
+PlantType _plantTypeForKey(String? key) {
+  switch (key) {
+    case 'lavender':
+      return PlantType.purple;
+    case 'shrub':
+      return PlantType.bush;
+    case 'clover':
+      return PlantType.mushroom;
+    case 'succulent':
+    case 'fern':
+    default:
+      return PlantType.spiky;
+  }
 }
 
 /// Maps the API's plant stage. "flourishing" is shown as grown + isFinalStage.
@@ -990,7 +962,7 @@ class _RootShellState extends State<RootShell> {
       case 0:
         return const HomePage(key: ValueKey('home'));
       case 1:
-
+        return const PlaceholderPage(key: ValueKey('garden'), title: 'Garden');
       case 2:
         return const AudioPage(key: ValueKey('audio'));
       case 3:
@@ -1593,6 +1565,7 @@ class _HomePageState extends State<HomePage>
           const SizedBox(height: 10),
           Row(
             children: [
+              PlantIcon(type: t.plant, size: 48),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1907,8 +1880,7 @@ class _TechniqueTile extends StatelessWidget {
               color: locked ? const Color(0x33081433) : AppColors.tile,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: ConstellationIcon(
-                type: technique.constellation, size: 44, faded: locked),
+            child: PlantIcon(type: technique.plant, size: 38, faded: locked),
           ),
           const SizedBox(width: 14),
           Expanded(

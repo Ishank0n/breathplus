@@ -858,7 +858,7 @@ class _SessionPageState extends State<SessionPage>
             ),
           ],
         ),
-        child: ConstellationIcon(type: t.constellation, size: 136),
+        child: PlantIcon(type: t.plant, size: 136),
       ),
     );
   }

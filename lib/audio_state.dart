@@ -96,7 +96,11 @@ class ImportResult {
 }
 
 /// ---------------------------------------------------------------------------
-/// CONTROLLER (Handles imported tracks and Frequency Tones)
+/// CONTROLLER  (shared by Library and My music)
+///
+/// Imported tracks are copied into the app's own storage and remembered
+/// between launches. They play through `just_audio`. Library tracks have no
+/// audio files yet, so they still use the simulated timer.
 /// ---------------------------------------------------------------------------
 AudioController get audio => AudioController.instance;
 
@@ -112,6 +116,16 @@ class AudioController extends ChangeNotifier {
   static const _prefsChosen = 'chosen_tracks_v1';
   static const _folderName = 'imported_audio';
   static const _undoWindow = Duration(seconds: 6);
+
+  /// Placeholder plant sounds
+  final List<AudioTrack> library = const [
+    AudioTrack(id: 'lib_rain', title: 'Rain on Leaves', category: 'Nature', seconds: 480),
+    AudioTrack(id: 'lib_dawn', title: 'Forest Dawn', category: 'Nature', seconds: 390),
+    AudioTrack(id: 'lib_stream', title: 'Stream Hush', category: 'Nature', seconds: 600),
+    AudioTrack(id: 'lib_bamboo', title: 'Wind in Bamboo', category: 'Ambient', seconds: 435),
+    AudioTrack(id: 'lib_birds', title: 'Morning Birdsong', category: 'Nature', seconds: 555),
+    AudioTrack(id: 'lib_thunder', title: 'Soft Thunder', category: 'Ambient', seconds: 720),
+  ];
 
   final List<AudioTrack> imported = [];
   final Set<String> chosen = {};
@@ -330,7 +344,7 @@ class AudioController extends ChangeNotifier {
     _loading = true;
     try {
       final d = await _player.setFilePath(t.path!, initialPosition: from);
-      if (token != _loadToken) return;
+      if (token != _loadToken) return; // another track was tapped meanwhile
       duration = d;
       _loading = false;
       if (isPlaying) unawaited(_player.play());
@@ -359,6 +373,7 @@ class AudioController extends ChangeNotifier {
     _timer = null;
   }
 
+  /// Simulated progress for library tracks, which have no audio files yet.
   void _syncTimer() {
     _stopTimer();
     final t = current;
