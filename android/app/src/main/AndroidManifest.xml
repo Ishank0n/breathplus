@@ -27,7 +27,7 @@
         android:maxSdkVersion="30"/>
 
     <application
-        android:label="test_app"
+        android:label="Vento+"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 

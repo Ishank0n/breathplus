@@ -32,6 +32,7 @@ class AudioTrack {
   final int seconds;
   final bool imported;
   final String? path; // file path of imported audio (null on web)
+  final String? assetPath; // bundled audio asset for Library tracks
   final int? bytes;
   final String? ext;
 
@@ -42,6 +43,7 @@ class AudioTrack {
     required this.seconds,
     this.imported = false,
     this.path,
+    this.assetPath,
     this.bytes,
     this.ext,
   });
@@ -142,6 +144,9 @@ class AudioController extends ChangeNotifier {
 
   bool _isFile(AudioTrack? t) => !kIsWeb && t?.path != null;
 
+  bool _hasAudioSource(AudioTrack? t) =>
+      t != null && (t.assetPath != null || _isFile(t));
+
   // ---- Startup ----------------------------------------------------------------
   Future<void> _init() async {
     try {
@@ -238,7 +243,7 @@ class AudioController extends ChangeNotifier {
 
   // ---- Player events ----------------------------------------------------------
   void _onPosition(Duration p) {
-    if (!_isFile(current) || _loading) return;
+    if (!_hasAudioSource(current) || _loading) return;
     position = p;
     final d = duration ?? _player.duration;
     if (d != null && d.inMilliseconds > 0) {
@@ -249,7 +254,7 @@ class AudioController extends ChangeNotifier {
   }
 
   void _onPlayerState(PlayerState s) {
-    if (!_isFile(current) || _loading) return;
+    if (!_hasAudioSource(current) || _loading) return;
     if (s.processingState == ProcessingState.completed) {
       isPlaying = false;
       progress = 0;
@@ -284,7 +289,7 @@ class AudioController extends ChangeNotifier {
     tonePlaying = false; // Turn off tone when playing an audio track
     notifyListeners();
 
-    if (_isFile(t)) {
+    if (_hasAudioSource(t)) {
       _stopTimer();
       await _loadAndPlay(t);
     } else {
@@ -297,7 +302,7 @@ class AudioController extends ChangeNotifier {
 
   void _pause() {
     isPlaying = false;
-    if (_isFile(current)) unawaited(_player.pause());
+    if (_hasAudioSource(current)) unawaited(_player.pause());
     _syncTimer();
     notifyListeners();
   }
@@ -309,7 +314,7 @@ class AudioController extends ChangeNotifier {
     tonePlaying = false;
     notifyListeners();
 
-    if (!_isFile(t)) {
+    if (!_hasAudioSource(t)) {
       _syncTimer();
       return;
     }
@@ -333,7 +338,7 @@ class AudioController extends ChangeNotifier {
     } catch (e) {
       if (token != _loadToken) return;
       _loading = false;
-      debugPrint('Could not play "${t.title}": $e');
+      debugPrint('Could not play "${t.title}". Check that ${t.assetPath ?? t.path} exists and is registered in pubspec.yaml. Error: $e');
       isPlaying = false;
       notifyListeners();
     }
@@ -342,7 +347,7 @@ class AudioController extends ChangeNotifier {
   void seek(double v) {
     progress = v.clamp(0.0, 1.0).toDouble();
     final d = duration;
-    if (_isFile(current) && d != null) {
+    if (_hasAudioSource(current) && d != null) {
       position = d * progress;
       unawaited(_player.seek(position));
     }
@@ -357,7 +362,7 @@ class AudioController extends ChangeNotifier {
   void _syncTimer() {
     _stopTimer();
     final t = current;
-    if (!isPlaying || t == null || _isFile(t)) return;
+    if (!isPlaying || t == null || _hasAudioSource(t)) return;
     _timer = Timer.periodic(const Duration(milliseconds: 250), (_) {
       final t = current;
       if (t == null || t.seconds <= 0) return;

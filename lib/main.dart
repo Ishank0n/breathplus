@@ -13,7 +13,7 @@ import 'audio_page.dart';
 import 'selection.dart';
 import 'vitals_service.dart';
 import 'auth_service.dart';
-
+import 'garden_page.dart';
 
 final AuthService auth = AuthService();
 
@@ -396,6 +396,31 @@ enum ConstellationType {
   leo,
   taurus,
   draco,
+}
+
+// Keep this list and hash identical to SessionPage so each technique has
+// the same default flower everywhere in the app.
+const List<String> _techniqueFlowers = [
+  '🌹', // Rose
+  '🌻', // Sunflower
+  '🌷', // Tulip
+  '🌼', // Daisy
+  '🌸', // Cherry Blossom
+  '🪻', // Lavender
+  '🌺', // Hibiscus
+  '💮', // Blossom
+  '🪷', // Lotus
+];
+
+String _flowerForTechnique(Technique technique) {
+  final key = technique.slug ??
+      technique.id?.toString() ??
+      technique.name;
+  var hash = 0;
+  for (final code in key.codeUnits) {
+    hash = (hash * 31 + code) & 0x7fffffff;
+  }
+  return _techniqueFlowers[hash % _techniqueFlowers.length];
 }
 
 int _minutesFromSeconds(int seconds) => math.max(1, (seconds / 60).round());
@@ -965,7 +990,7 @@ class _RootShellState extends State<RootShell> {
       case 0:
         return const HomePage(key: ValueKey('home'));
       case 1:
-        return const PlaceholderPage(key: ValueKey('cosmos'), title: 'Cosmos');
+
       case 2:
         return const AudioPage(key: ValueKey('audio'));
       case 3:
@@ -1568,7 +1593,6 @@ class _HomePageState extends State<HomePage>
           const SizedBox(height: 10),
           Row(
             children: [
-              ConstellationIcon(type: t.constellation, size: 52),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

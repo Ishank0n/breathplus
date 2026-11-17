@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Re-uses AppColors, kSerif, Technique, ConstellationIcon and Pressable from main.dart
 import 'main.dart';
@@ -28,6 +30,19 @@ class _Phase {
   final String phaseKey; // inhale | hold_in | exhale | hold_out
 
   const _Phase(this.label, this.action, this.hint, this.seconds, this.phaseKey);
+}
+
+/// A flower available to use as the visual companion during a session.
+class SessionFlower {
+  final String id;
+  final String name;
+  final String emoji;
+
+  const SessionFlower({
+    required this.id,
+    required this.name,
+    required this.emoji,
+  });
 }
 
 /// Builds the phases from a pattern string, e.g. "4-4-4-4", "4-7-8", "5-5".
@@ -83,11 +98,47 @@ class _SessionPageState extends State<SessionPage>
   AudioTrack? _sessionTrack;
   bool _done = false;
 
+  // Garden flowers and the flower remembered for each breathing exercise.
+  static const List<SessionFlower> _allFlowers = [
+    SessionFlower(id: 'rose', name: 'Rose', emoji: '🌹'),
+    SessionFlower(id: 'sunflower', name: 'Sunflower', emoji: '🌻'),
+    SessionFlower(id: 'tulip', name: 'Tulip', emoji: '🌷'),
+    SessionFlower(id: 'daisy', name: 'Daisy', emoji: '🌼'),
+    SessionFlower(id: 'cherry', name: 'Cherry Blossom', emoji: '🌸'),
+    SessionFlower(id: 'lavender', name: 'Lavender', emoji: '🪻'),
+    SessionFlower(id: 'hibiscus', name: 'Hibiscus', emoji: '🌺'),
+    SessionFlower(id: 'blossom', name: 'Blossom', emoji: '💮'),
+    SessionFlower(id: 'lotus', name: 'Lotus', emoji: '🪷'),
+  ];
+
+  static const String _gardenKey = 'breathling_garden';
+  static const String _exerciseFlowersKey = 'breathling_exercise_flowers';
+
+  late SessionFlower _selectedFlower;
+  List<SessionFlower> _gardenFlowers = [];
+  bool _flowersLoading = true;
+
+  String get _exerciseKey =>
+      widget.technique.slug ??
+      widget.technique.id?.toString() ??
+      widget.technique.name;
+
+  SessionFlower _defaultFlower() {
+    // Stable rolling hash: the same exercise always gets the same starter flower.
+    var hash = 0;
+    for (final code in _exerciseKey.codeUnits) {
+      hash = (hash * 31 + code) & 0x7fffffff;
+    }
+    return _allFlowers[hash % _allFlowers.length];
+  }
+
   static const double _minScale = 0.82;
 
   @override
   void initState() {
     super.initState();
+    _selectedFlower = _defaultFlower();
+    _loadSessionFlower();
     _phases = widget.technique.phases.isNotEmpty
         ? widget.technique.phases.map((p) {
             final key = p.phase;
@@ -276,6 +327,235 @@ class _SessionPageState extends State<SessionPage>
       default:
         return 'Holding';
     }
+  }
+
+  /// Loads flowers planted in the Garden and this exercise's saved selection.
+  Future<void> _loadSessionFlower() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedGarden = prefs.getString(_gardenKey);
+    final savedChoices = prefs.getString(_exerciseFlowersKey);
+
+    final garden = <SessionFlower>[];
+    if (savedGarden != null) {
+      try {
+        final Map<String, dynamic> data = jsonDecode(savedGarden);
+        for (final id in data.values) {
+          final matches = _allFlowers.where((flower) => flower.id == id);
+          if (matches.isNotEmpty &&
+              !garden.any((flower) => flower.id == matches.first.id)) {
+            garden.add(matches.first);
+          }
+        }
+      } catch (e) {
+        debugPrint('Could not read garden flowers: $e');
+      }
+    }
+
+    var selected = _defaultFlower();
+    if (savedChoices != null) {
+      try {
+        final Map<String, dynamic> choices = jsonDecode(savedChoices);
+        final savedId = choices[_exerciseKey];
+        final matches = _allFlowers.where((flower) => flower.id == savedId);
+        if (matches.isNotEmpty) selected = matches.first;
+      } catch (e) {
+        debugPrint('Could not read saved exercise flowers: $e');
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _gardenFlowers = garden;
+      _selectedFlower = selected;
+      _flowersLoading = false;
+    });
+  }
+
+  Future<void> _saveExerciseFlower(SessionFlower flower) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_exerciseFlowersKey);
+    Map<String, dynamic> choices = {};
+
+    if (raw != null) {
+      try {
+        choices = Map<String, dynamic>.from(jsonDecode(raw));
+      } catch (_) {
+        choices = {};
+      }
+    }
+
+    choices[_exerciseKey] = flower.id;
+    await prefs.setString(_exerciseFlowersKey, jsonEncode(choices));
+  }
+
+  void _openFlowerPicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(22, 16, 22, 28),
+          decoration: const BoxDecoration(
+            color: AppColors.bgTop,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+            border: Border(top: BorderSide(color: AppColors.cardBorder, width: 1.2)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBorder,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Choose your flower',
+                  style: TextStyle(
+                    fontFamily: kSerif,
+                    fontFamilyFallback: kSerifFallback,
+                    fontSize: 23,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.white,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                const Text(
+                  'Select a flower you have planted in your Garden.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.mintText, fontSize: 13),
+                ),
+                const SizedBox(height: 22),
+                if (_flowersLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 28),
+                    child: CircularProgressIndicator(color: AppColors.mint),
+                  )
+                else if (_gardenFlowers.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Column(
+                      children: [
+                        Icon(Icons.local_florist_outlined, size: 45, color: AppColors.mint),
+                        SizedBox(height: 12),
+                        Text(
+                          'Your garden is empty!',
+                          style: TextStyle(color: AppColors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Plant some flowers in your Garden first.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.mintText, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _gardenFlowers.length,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 1.05,
+                    ),
+                    itemBuilder: (context, index) {
+                      final flower = _gardenFlowers[index];
+                      final selected = flower.id == _selectedFlower.id;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() => _selectedFlower = flower);
+                          _saveExerciseFlower(flower);
+                          Navigator.pop(sheetContext);
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            color: selected ? const Color(0xFF315B40) : AppColors.card,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: selected ? AppColors.mint : AppColors.cardBorder,
+                              width: selected ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(flower.emoji, style: const TextStyle(fontSize: 34)),
+                              const SizedBox(height: 6),
+                              Text(
+                                flower.name,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: AppColors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFlowerSelectorCard() {
+    return _SessionCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      child: Row(
+        children: [
+          Text(_selectedFlower.emoji, style: const TextStyle(fontSize: 32)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Your companion flower',
+                  style: TextStyle(color: AppColors.mintText, fontSize: 11.5),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _selectedFlower.name,
+                  style: const TextStyle(
+                    color: AppColors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Pressable(
+            onTap: _openFlowerPicker,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
+              decoration: BoxDecoration(color: AppColors.mint, borderRadius: BorderRadius.circular(20)),
+              child: const Text(
+                'Change',
+                style: TextStyle(color: AppColors.dark, fontSize: 12, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openMusicPicker() async {
@@ -552,7 +832,7 @@ class _SessionPageState extends State<SessionPage>
     );
   }
 
-  Widget _circle(Technique t, double s) {
+  Widget _circle(double s) {
     return Transform.scale(
       scale: s,
       child: Container(
@@ -729,14 +1009,19 @@ class _SessionPageState extends State<SessionPage>
                           tween: Tween<double>(begin: _minScale, end: _userTarget),
                           duration: const Duration(milliseconds: 1400),
                           curve: Curves.easeInOut,
-                          builder: (context, s, _) => _circle(t, s),
+                          builder: (context, s, _) => _circle(s),
                         ),
                       ],
                     )
-                  : _circle(t, scale),
+                  : _circle(scale),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
+
+          // The user can change the flower companion without leaving the session.
+          _buildFlowerSelectorCard(),
+
+          const SizedBox(height: 18),
 
           // ---- Phase text ---------------------------------------------------
           AnimatedSwitcher(
