@@ -5,6 +5,16 @@ import 'main.dart';
 import 'audio_state.dart';
 import 'audio_widgets.dart';
 
+/// Library-page accent colors.
+///
+/// Keep the existing navy backgrounds, but use a consistent green accent
+/// throughout this page instead of mixing AppColors' cyan/blue accent values.
+class _LibraryColors {
+  static const accent = Color(0xFF72D6A0);
+  static const accentText = Color(0xFFB4E8C9);
+  static const border = Color(0x665CBF8A);
+}
+
 /// LIBRARY tab: now playing, scrollable plant sounds, import / choose.
 class LibraryPage extends StatelessWidget {
   /// Called when the user taps "View" after importing files.
@@ -70,8 +80,11 @@ class LibraryPage extends StatelessWidget {
                       audio.toggle(t);
                     },
                     trailing: audio.chosen.contains(t.id)
-                        ? const Icon(Icons.check_circle_rounded,
-                            size: 18, color: AppColors.mint)
+                        ? const Icon(
+                            Icons.check_circle_rounded,
+                            size: 18,
+                            color: _LibraryColors.accent,
+                          )
                         : null,
                   );
                 },
@@ -137,7 +150,7 @@ class _ChooseSongsSheetState extends State<_ChooseSongsSheet> {
         color: AppColors.bgTop,
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
         border: Border(
-          top: BorderSide(color: AppColors.cardBorder, width: 1.2),
+          top: BorderSide(color: _LibraryColors.border, width: 1.2),
         ),
       ),
       padding: EdgeInsets.fromLTRB(20, 10, 20, 20 + bottom),
@@ -150,7 +163,7 @@ class _ChooseSongsSheetState extends State<_ChooseSongsSheet> {
               width: 38,
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.cardBorder,
+                color: _LibraryColors.border,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -169,7 +182,10 @@ class _ChooseSongsSheetState extends State<_ChooseSongsSheet> {
           const SizedBox(height: 4),
           Text(
             '${_sel.length} selected',
-            style: const TextStyle(color: AppColors.mintText, fontSize: 12.5),
+            style: const TextStyle(
+              color: _LibraryColors.accentText,
+              fontSize: 12.5,
+            ),
           ),
           const SizedBox(height: 8),
           ConstrainedBox(
@@ -207,7 +223,7 @@ class _ChooseSongsSheetState extends State<_ChooseSongsSheet> {
                               Text(
                                 t.subtitle,
                                 style: const TextStyle(
-                                  color: AppColors.mintText,
+                                  color: _LibraryColors.accentText,
                                   fontSize: 12,
                                 ),
                               ),
@@ -220,11 +236,13 @@ class _ChooseSongsSheetState extends State<_ChooseSongsSheet> {
                           height: 24,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: on ? AppColors.mint : Colors.transparent,
+                            color: on
+                                ? _LibraryColors.accent
+                                : Colors.transparent,
                             border: Border.all(
                               color: on
-                                  ? AppColors.mint
-                                  : AppColors.cardBorder,
+                                  ? _LibraryColors.accent
+                                  : _LibraryColors.border,
                               width: 2,
                             ),
                           ),

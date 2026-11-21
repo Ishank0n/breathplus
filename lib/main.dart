@@ -10,10 +10,11 @@ import 'session_page.dart';
 import 'stats_page.dart';
 import 'profile_page.dart';
 import 'audio_page.dart';
+import 'garden_page.dart';
 import 'selection.dart';
 import 'vitals_service.dart';
 import 'auth_service.dart';
-import 'garden_page.dart';
+
 
 final AuthService auth = AuthService();
 
@@ -22,7 +23,7 @@ Future<void> main() async {
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFF0C1A3D), // Orbit Navy
+    systemNavigationBarColor: Color(0xFF1A3F30),
     systemNavigationBarIconBrightness: Brightness.light,
   ));
   runApp(
@@ -134,9 +135,17 @@ class _AuthGateState extends State<AuthGate> {
     }
 
     if (_signedIn) {
-      // Preserve the app's original entry flow after authentication.
-      return ModeSelectionScreen(
-        plantsBuilder: (_) => const RootShell(),
+      return Builder(
+        builder: (context) => ModeSelectionScreen(
+          plantsBuilder: (_) => const RootShell(),
+          onSpace: () {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(
+                builder: (_) => const RootShell(),
+              ),
+            );
+          },
+        ),
       );
     }
 
@@ -155,16 +164,16 @@ class _AuthLoadingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: Color(0xFF050B1F), // Deep Space
+      backgroundColor: Color(0xFF0E2217),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Color(0xFF5CB8FF)), // Nebula Cyan
+            CircularProgressIndicator(color: Color(0xFF8FE3A5)),
             SizedBox(height: 18),
             Text(
               'Checking your session…',
-              style: TextStyle(color: Color(0xFF9FD4FF), fontSize: 14),
+              style: TextStyle(color: Color(0xFFA6DDB8), fontSize: 14),
             ),
           ],
         ),
@@ -189,14 +198,14 @@ class _GoogleLoginScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF050B1F), // Deep Space
+      backgroundColor: const Color(0xFF0E2217),
       body: Container(
         width: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF0C1A3D), Color(0xFF050B1F)], // Orbit Navy → Deep Space
+            colors: [Color(0xFF1C4636), Color(0xFF0E2217)],
           ),
         ),
         child: SafeArea(
@@ -212,18 +221,17 @@ class _GoogleLoginScreen extends StatelessWidget {
                       width: 88,
                       height: 88,
                       decoration: BoxDecoration(
-                        color: const Color(0x33152B5C),
+                        color: const Color(0x331F4A3A),
                         borderRadius: BorderRadius.circular(28),
                         border: Border.all(
-                          color: const Color(0xFF2F5AA8),
+                          color: const Color(0xFF2E6B52),
                           width: 1.4,
                         ),
                       ),
-                      child: const Center(
-                        child: GalaxyIcon(
-                          size: 50,
-                          color: Color(0xFF5CB8FF),
-                        ),
+                      child: const Icon(
+                        Icons.spa_rounded,
+                        size: 46,
+                        color: Color(0xFF8FE3A5),
                       ),
                     ),
                     const SizedBox(height: 25),
@@ -234,7 +242,7 @@ class _GoogleLoginScreen extends StatelessWidget {
                         fontFamily: 'Georgia',
                         fontSize: 29,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFFFFFFFF),
+                        color: Color(0xFFF3F7F2),
                       ),
                     ),
                     const SizedBox(height: 9),
@@ -242,7 +250,7 @@ class _GoogleLoginScreen extends StatelessWidget {
                       'Sign in to continue your breathing journey.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Color(0xFF9FD4FF),
+                        color: Color(0xFFA6DDB8),
                         fontSize: 14,
                       ),
                     ),
@@ -253,10 +261,10 @@ class _GoogleLoginScreen extends StatelessWidget {
                       child: ElevatedButton(
                         onPressed: busy ? null : onSignIn,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF5CB8FF),
-                          foregroundColor: const Color(0xFF050B1F),
+                          backgroundColor: const Color(0xFF8FE3A5),
+                          foregroundColor: const Color(0xFF0F2A1C),
                           disabledBackgroundColor:
-                              const Color(0xFF3B5F8F),
+                              const Color(0xFF638B70),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(28),
                           ),
@@ -268,7 +276,7 @@ class _GoogleLoginScreen extends StatelessWidget {
                                 height: 22,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.3,
-                                  color: Color(0xFF050B1F),
+                                  color: Color(0xFF0F2A1C),
                                 ),
                               )
                             : const Row(
@@ -322,7 +330,7 @@ class _GoogleLoginScreen extends StatelessWidget {
                           onPressed: onRetry,
                           child: const Text(
                             'Retry configuration',
-                            style: TextStyle(color: Color(0xFF9FD4FF)),
+                            style: TextStyle(color: Color(0xFFA6DDB8)),
                           ),
                         ),
                       ],
@@ -342,17 +350,17 @@ class _GoogleLoginScreen extends StatelessWidget {
 /// THEME
 /// ---------------------------------------------------------------------------
 class AppColors {
-  static const bgTop = Color(0xFF0C1A3D);       // Orbit Navy
-  static const bgBottom = Color(0xFF050B1F);    // Deep Space
-  static const card = Color(0xFF152B5C);
-  static const cardBorder = Color(0xFF2F5AA8);
-  static const tile = Color(0xFF152B5C);
-  static const mint = Color(0xFF5CB8FF);        // Nebula Cyan (accent)
-  static const mintText = Color(0xFF9FD4FF);    // light tint of Nebula Cyan
-  static const white = Color(0xFFFFFFFF);
-  static const dark = Color(0xFF050B1F);        // Deep Space (text on accent)
+  static const bgTop = Color(0xFF1C4636);
+  static const bgBottom = Color(0xFF0E2217);
+  static const card = Color(0xFF1F4A3A);
+  static const cardBorder = Color(0xFF2E6B52);
+  static const tile = Color(0xFF1F4A3A);
+  static const mint = Color(0xFF8FE3A5);
+  static const mintText = Color(0xFFA6DDB8);
+  static const white = Color(0xFFF3F7F2);
+  static const dark = Color(0xFF0F2A1C);
   static const amber = Color(0xFFF2C47E);
-  static const navBg = Color(0xFF0C1A3D);       // Orbit Navy
+  static const navBg = Color(0xFF1A3F30);
   static const terracotta = Color(0xFFD98B5F);
 }
 
@@ -385,6 +393,31 @@ class BreatheApp extends StatelessWidget {
 enum TechniqueStatus { notCollected, collected, grown }
 
 enum PlantType { spiky, purple, bush, mushroom }
+
+// Keep this list and hash identical to SessionPage so each technique has
+// the same default flower everywhere in the app.
+const List<String> _techniqueFlowers = [
+  '🌹', // Rose
+  '🌻', // Sunflower
+  '🌷', // Tulip
+  '🌼', // Daisy
+  '🌸', // Cherry Blossom
+  '🪻', // Lavender
+  '🌺', // Hibiscus
+  '💮', // Blossom
+  '🪷', // Lotus
+];
+
+String _flowerForTechnique(Technique technique) {
+  final key = technique.slug ??
+      technique.id?.toString() ??
+      technique.name;
+  var hash = 0;
+  for (final code in key.codeUnits) {
+    hash = (hash * 31 + code) & 0x7fffffff;
+  }
+  return _techniqueFlowers[hash % _techniqueFlowers.length];
+}
 
 int _minutesFromSeconds(int seconds) => math.max(1, (seconds / 60).round());
 
@@ -425,7 +458,7 @@ class Technique {
   final TechniqueStatus status;
   final int progress;
   final int goal;
-  final ConstellationType constellation;
+  final PlantType plant;
 
   // Filled in when the data comes from the API.
   final int? id;
@@ -445,7 +478,7 @@ class Technique {
     required this.pattern,
     required this.minutes,
     required this.status,
-    required this.constellation,
+    required this.plant,
     this.progress = 0,
     this.goal = 10,
     this.id,
@@ -468,7 +501,7 @@ class Technique {
       pattern: t.pattern,
       minutes: _minutesFromSeconds(t.defaultDurationSec),
       status: _statusForStage(p?.stage),
-      constellation: _constellationFor(t.id),
+      plant: _plantTypeForKey(t.plantKey),
       progress: p?.progressToNext ?? 0,
       goal: p?.sessionsPerStage ?? 10,
       isFinalStage: p?.stage == 'flourishing',
@@ -485,7 +518,7 @@ class Technique {
         pattern: s.pattern,
         minutes: _minutesFromSeconds(s.targetDurationSec),
         status: TechniqueStatus.collected,
-        constellation: _constellationFor(s.techniqueId),
+        plant: _plantTypeForKey(s.techniquePlantKey),
         phases: s.phases,
         targetDurationSec: s.targetDurationSec,
         sessionId: s.id,
@@ -498,7 +531,7 @@ class Technique {
         pattern: s.pattern,
         minutes: _minutesFromSeconds(s.targetDurationSec),
         status: status,
-        constellation: constellation,
+        plant: plant,
         progress: progress,
         goal: goal,
         id: id ?? s.techniqueId,
@@ -510,9 +543,6 @@ class Technique {
         sessionId: s.id,
         elapsedSec: s.elapsedSec,
       );
-
-  /// Kept so older code that reads `technique.plant` still compiles.
-  ConstellationType get plant => constellation;
 
   String get subtitle {
     final base = '$pattern · $minutes min';
@@ -528,136 +558,6 @@ class Technique {
     }
   }
 }
-
-/// ---------------------------------------------------------------------------
-/// TECHNIQUE CATALOG
-/// ---------------------------------------------------------------------------
-/// The ten techniques the app offers, in display order. Item N gets the Nth
-/// constellation (1 = Cassiopeia ... 10 = Draco). The API supplies each
-/// technique's progress, status, id and phases; matching is by [slug] first,
-/// then by name. A technique the server doesn't know yet is shown as not
-/// collected, and starting it sends [slug] to the server.
-class TechniqueSpec {
-  final String slug;
-  final String name;
-  final String pattern;
-  final int minutes;
-
-  const TechniqueSpec({
-    required this.slug,
-    required this.name,
-    required this.pattern,
-    required this.minutes,
-  });
-}
-
-const List<TechniqueSpec> kTechniqueCatalog = [
-  TechniqueSpec(
-    slug: 'box-breathing',
-    name: 'Box Breathing',
-    pattern: '4-4-4-4',
-    minutes: 5,
-  ),
-  TechniqueSpec(
-    slug: '4-6-breathing',
-    name: '4-6 Breathing',
-    pattern: '4-6',
-    minutes: 4,
-  ),
-  TechniqueSpec(
-    slug: '5-5-coherent-breathing',
-    name: '5-5 Coherent Breathing',
-    pattern: '5-5',
-    minutes: 5,
-  ),
-  TechniqueSpec(
-    slug: 'pursed-lip-breathing',
-    name: 'Pursed Lip Breathing',
-    pattern: '2-4',
-    minutes: 3,
-  ),
-  TechniqueSpec(
-    slug: 'extended-exhale',
-    name: 'Extended Exhale (1:2)',
-    pattern: '4-8',
-    minutes: 4,
-  ),
-  TechniqueSpec(
-    slug: 'physiological-sigh',
-    name: 'Physiological Sigh',
-    pattern: '2-1-6',
-    minutes: 1,
-  ),
-  TechniqueSpec(
-    slug: '4-2-6-breathing',
-    name: '4-2-6 Breathing',
-    pattern: '4-2-6',
-    minutes: 4,
-  ),
-  TechniqueSpec(
-    slug: 'alternate-nostril-breathing',
-    name: 'Alternate Nostril Breathing',
-    pattern: '4-4-4-4',
-    minutes: 5,
-  ),
-  TechniqueSpec(
-    slug: 'humming-bee-breath',
-    name: 'Humming Bee Breath',
-    pattern: '4-6',
-    minutes: 3,
-  ),
-  TechniqueSpec(
-    slug: '5-4-3-2-1-breathing',
-    name: '5-4-3-2-1 Breathing',
-    pattern: '5-4-3-2-1',
-    minutes: 3,
-  ),
-];
-
-String _normName(String s) =>
-    s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-
-/// Finds the API technique that matches a catalog entry (slug, then name).
-ApiTechnique? _findApiTechnique(List<ApiTechnique> api, TechniqueSpec spec) {
-  for (final t in api) {
-    if (t.slug == spec.slug) return t;
-  }
-  final wanted = _normName(spec.name);
-  for (final t in api) {
-    if (_normName(t.name) == wanted) return t;
-  }
-  return null;
-}
-
-/// Builds a technique from the catalog, filling in progress from the API
-/// when the server knows it. The name, pattern and length shown always come
-/// from the catalog.
-Technique _techniqueFromSpec(TechniqueSpec spec, int index, ApiTechnique? api) {
-  final base = api == null ? null : Technique.fromApi(api);
-  return Technique(
-    id: base?.id,
-    slug: base?.slug ?? spec.slug,
-    name: spec.name,
-    description: base?.description,
-    pattern: spec.pattern,
-    minutes: spec.minutes,
-    status: base?.status ?? TechniqueStatus.notCollected,
-    constellation:
-        ConstellationType.values[index % ConstellationType.values.length],
-    progress: base?.progress ?? 0,
-    goal: base?.goal ?? 10,
-    isFinalStage: base?.isFinalStage ?? false,
-    phases: base?.phases ?? const [],
-    targetDurationSec: spec.minutes * 60,
-  );
-}
-
-/// The ten catalog techniques, in order, merged with the API's data.
-List<Technique> _buildCatalog(List<ApiTechnique> api) => [
-      for (var i = 0; i < kTechniqueCatalog.length; i++)
-        _techniqueFromSpec(
-            kTechniqueCatalog[i], i, _findApiTechnique(api, kTechniqueCatalog[i])),
-    ];
 
 /// Placeholder data. The home screen now loads techniques, streak and the
 /// last session from the API, and the vitals from the ESP32 band
@@ -675,15 +575,51 @@ class HomeData {
     pattern: '4-4-4-4',
     minutes: 5,
     status: TechniqueStatus.collected,
-    constellation: ConstellationType.cassiopeia,
+    plant: PlantType.spiky,
     progress: 6,
   );
   static const int lastAccuracy = 78;
 
-  /// The ten catalog techniques (not yet merged with any API data).
-  static final List<Technique> techniques = [
-    for (var i = 0; i < kTechniqueCatalog.length; i++)
-      _techniqueFromSpec(kTechniqueCatalog[i], i, null),
+  static const List<Technique> techniques = [
+    Technique(
+      name: 'Box Breathing',
+      pattern: '4-4-4-4',
+      minutes: 5,
+      status: TechniqueStatus.collected,
+      plant: PlantType.spiky,
+      progress: 6,
+    ),
+    Technique(
+      name: '4-7-8 Calm',
+      pattern: '4-7-8',
+      minutes: 4,
+      status: TechniqueStatus.collected,
+      plant: PlantType.purple,
+      progress: 2,
+    ),
+    Technique(
+      name: 'Coherent Breathing',
+      pattern: '5-5',
+      minutes: 6,
+      status: TechniqueStatus.grown,
+      plant: PlantType.bush,
+      progress: 0,
+    ),
+    Technique(
+      name: 'Belly Breathing',
+      pattern: '4-6',
+      minutes: 5,
+      status: TechniqueStatus.notCollected,
+      plant: PlantType.spiky,
+    ),
+    Technique(
+      name: 'Pursed-Lip',
+      pattern: '2-4',
+      minutes: 3,
+      status: TechniqueStatus.collected,
+      plant: PlantType.mushroom,
+      progress: 3,
+    ),
   ];
 }
 
@@ -736,14 +672,14 @@ class _PressableState extends State<Pressable> {
 }
 
 /// ---------------------------------------------------------------------------
-/// REUSABLE: CONSTELLATION ICON (drawn with CustomPainter)
+/// REUSABLE: PLANT ICON (drawn with CustomPainter)
 /// ---------------------------------------------------------------------------
-class ConstellationIcon extends StatelessWidget {
-  final ConstellationType type;
+class PlantIcon extends StatelessWidget {
+  final PlantType type;
   final double size;
   final bool faded;
 
-  const ConstellationIcon({
+  const PlantIcon({
     super.key,
     required this.type,
     this.size = 40,
@@ -755,182 +691,107 @@ class ConstellationIcon extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: CustomPaint(painter: _ConstellationPainter(type, faded)),
+      child: CustomPaint(painter: _PlantPainter(type, faded)),
     );
   }
 }
 
-/// Old name, kept so existing pages that use PlantIcon keep compiling.
-typedef PlantIcon = ConstellationIcon;
-
-class _ConstellationData {
-  /// Each star is [x, y, size] with x and y in 0..1 and size as a multiplier.
-  final List<List<double>> stars;
-
-  /// Each edge joins two star indexes.
-  final List<List<int>> edges;
-
-  const _ConstellationData({required this.stars, required this.edges});
-}
-
-const _constellations = <ConstellationType, _ConstellationData>{
-  ConstellationType.cassiopeia: _ConstellationData(
-    stars: [[0.06, 0.32, 1.0], [0.27, 0.7, 1.0], [0.5, 0.4, 1.2], [0.73, 0.72, 1.0], [0.94, 0.3, 1.0]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 4]],
-  ),
-  ConstellationType.orion: _ConstellationData(
-    stars: [[0.28, 0.12, 1.5], [0.72, 0.15, 1.1], [0.4, 0.48, 1.0], [0.5, 0.5, 1.1], [0.6, 0.52, 1.0], [0.7, 0.88, 1.0], [0.3, 0.86, 1.5], [0.5, 0.68, 0.7]],
-    edges: [[0, 1], [0, 2], [1, 4], [2, 3], [3, 4], [2, 6], [4, 5], [5, 6], [3, 7]],
-  ),
-  ConstellationType.ursaMajor: _ConstellationData(
-    stars: [[0.12, 0.3, 1.0], [0.15, 0.62, 1.0], [0.4, 0.68, 1.0], [0.4, 0.4, 1.0], [0.6, 0.36, 1.0], [0.76, 0.44, 1.0], [0.94, 0.62, 1.0]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 6]],
-  ),
-  ConstellationType.cygnus: _ConstellationData(
-    stars: [[0.5, 0.06, 1.4], [0.5, 0.46, 1.1], [0.5, 0.94, 1.1], [0.14, 0.3, 1.0], [0.86, 0.62, 1.0]],
-    edges: [[0, 1], [1, 2], [3, 1], [1, 4]],
-  ),
-  ConstellationType.scorpius: _ConstellationData(
-    stars: [[0.78, 0.1, 1.0], [0.62, 0.18, 1.0], [0.42, 0.34, 1.6], [0.34, 0.5, 1.0], [0.36, 0.66, 1.0], [0.48, 0.8, 1.0], [0.66, 0.86, 1.0], [0.82, 0.74, 1.0], [0.78, 0.58, 1.1], [0.9, 0.24, 1.0]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [1, 9]],
-  ),
-  ConstellationType.canisMajor: _ConstellationData(
-    stars: [[0.3, 0.3, 1.6], [0.16, 0.14, 1.0], [0.42, 0.1, 1.0], [0.5, 0.5, 1.2], [0.38, 0.72, 1.2], [0.72, 0.8, 1.0]],
-    edges: [[1, 0], [2, 0], [0, 3], [3, 4], [3, 5]],
-  ),
-  ConstellationType.pegasus: _ConstellationData(
-    stars: [[0.38, 0.3, 1.0], [0.7, 0.28, 1.0], [0.72, 0.62, 1.0], [0.4, 0.64, 1.0], [0.22, 0.2, 1.0], [0.08, 0.1, 1.0], [0.22, 0.8, 1.0], [0.1, 0.94, 1.0], [0.92, 0.14, 1.0]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 0], [0, 4], [4, 5], [3, 6], [6, 7], [1, 8]],
-  ),
-  ConstellationType.leo: _ConstellationData(
-    stars: [[0.22, 0.82, 1.5], [0.26, 0.62, 1.0], [0.33, 0.44, 1.1], [0.27, 0.26, 1.0], [0.34, 0.1, 1.0], [0.46, 0.2, 1.0], [0.64, 0.36, 1.0], [0.66, 0.6, 1.0], [0.92, 0.5, 1.2]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [2, 6], [6, 7], [7, 0], [6, 8], [7, 8]],
-  ),
-  ConstellationType.taurus: _ConstellationData(
-    stars: [[0.3, 0.58, 1.6], [0.14, 0.42, 1.0], [0.16, 0.78, 1.0], [0.5, 0.46, 1.0], [0.9, 0.1, 1.2], [0.88, 0.46, 1.0], [0.66, 0.76, 0.6], [0.72, 0.7, 0.6], [0.7, 0.82, 0.6]],
-    edges: [[1, 0], [0, 2], [0, 3], [3, 4], [3, 5]],
-  ),
-  ConstellationType.draco: _ConstellationData(
-    stars: [[0.16, 0.24, 1.0], [0.28, 0.1, 1.0], [0.42, 0.16, 1.0], [0.34, 0.3, 1.0], [0.5, 0.42, 1.0], [0.66, 0.34, 1.0], [0.8, 0.46, 1.0], [0.7, 0.62, 1.0], [0.5, 0.66, 1.0], [0.36, 0.78, 1.0], [0.5, 0.9, 1.0], [0.78, 0.93, 1.0]],
-    edges: [[0, 1], [1, 2], [2, 3], [3, 0], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11]],
-  ),
-};
-
-class _ConstellationPainter extends CustomPainter {
-  final ConstellationType type;
+class _PlantPainter extends CustomPainter {
+  final PlantType type;
   final bool faded;
 
-  _ConstellationPainter(this.type, this.faded);
+  _PlantPainter(this.type, this.faded);
 
   @override
   void paint(Canvas canvas, Size s) {
-    final data = _constellations[type]!;
     final w = s.width;
     final h = s.height;
-    const pad = 0.1;
 
-    Offset at(List<double> p) =>
-        Offset((pad + p[0] * (1 - 2 * pad)) * w, (pad + p[1] * (1 - 2 * pad)) * h);
+    final potColor = faded ? const Color(0xFF2B4A3B) : AppColors.terracotta;
+    final rimColor =
+        faded ? const Color(0xFF335746) : const Color(0xFFE59A6E);
 
-    // Locked (not collected) constellations are dim and have no glow.
-    final lineColor =
-        faded ? const Color(0x663A5A9A) : AppColors.mint.withAlpha(170);
-    final starColor = faded ? const Color(0xFF4F6FA8) : const Color(0xFFFFFFFF);
-    final glowColor = AppColors.mint.withAlpha(70);
+    // Pot
+    final pot = Path()
+      ..moveTo(w * 0.27, h * 0.68)
+      ..lineTo(w * 0.73, h * 0.68)
+      ..lineTo(w * 0.66, h * 0.93)
+      ..lineTo(w * 0.34, h * 0.93)
+      ..close();
+    canvas.drawPath(pot, Paint()..color = potColor);
 
-    final line = Paint()
-      ..color = lineColor
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = math.max(1.0, w * 0.032);
-
-    for (final e in data.edges) {
-      canvas.drawLine(at(data.stars[e[0]]), at(data.stars[e[1]]), line);
-    }
-
-    for (final st in data.stars) {
-      final c = at(st);
-      final r = math.max(1.1, w * 0.04 * st[2]);
-      if (!faded) canvas.drawCircle(c, r * 2.3, Paint()..color = glowColor);
-      canvas.drawCircle(c, r, Paint()..color = starColor);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ConstellationPainter old) =>
-      old.type != type || old.faded != faded;
-}
-
-/// ---------------------------------------------------------------------------
-/// REUSABLE: GALAXY ICON (spiral galaxy drawn with CustomPainter)
-/// ---------------------------------------------------------------------------
-class GalaxyIcon extends StatelessWidget {
-  final double size;
-  final Color color;
-
-  const GalaxyIcon({super.key, this.size = 24, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(painter: _GalaxyPainter(color)),
+    // Rim
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.22, h * 0.60, w * 0.56, h * 0.12),
+        Radius.circular(w * 0.04),
+      ),
+      Paint()..color = rimColor,
     );
-  }
-}
 
-class _GalaxyPainter extends CustomPainter {
-  final Color color;
+    final base = Offset(w * 0.5, h * 0.64);
 
-  _GalaxyPainter(this.color);
-
-  @override
-  void paint(Canvas canvas, Size s) {
-    final w = s.width;
-    final h = s.height;
-    final c = Offset(w / 2, h / 2);
-
-    const turns = 1.15; // how far each arm winds around the core
-    const steps = 28;
-
-    // Two spiral arms, thick and bright near the core, thin and faint outside.
-    for (int arm = 0; arm < 2; arm++) {
-      final base = arm * math.pi;
-      Offset? prev;
-      for (int i = 0; i <= steps; i++) {
-        final t = i / steps;
-        final ang = base + t * turns * 2 * math.pi;
-        final r = w * (0.08 + 0.38 * t);
-        final p = c + Offset(math.cos(ang), math.sin(ang)) * r;
-        if (prev != null) {
-          canvas.drawLine(
-            prev,
-            p,
-            Paint()
-              ..color = color.withAlpha((235 - 155 * t).round())
-              ..strokeWidth = w * (0.085 - 0.05 * t)
-              ..strokeCap = StrokeCap.round,
-          );
-        }
-        prev = p;
-      }
+    switch (type) {
+      case PlantType.spiky:
+        _fan(canvas, base, h, const [-62, -32, 0, 32, 62],
+            faded ? const Color(0xFF244536) : const Color(0xFF4CAF6E),
+            faded ? const Color(0xFF1E3B2E) : const Color(0xFF2E8B57));
+        break;
+      case PlantType.purple:
+        _fan(canvas, base, h, const [-58, -28, 0, 28, 58],
+            const Color(0xFF8E7CC3), const Color(0xFF5B4B9A));
+        break;
+      case PlantType.bush:
+        final dark = Paint()..color = const Color(0xFF2E8B57);
+        final light = Paint()..color = const Color(0xFF3FA66B);
+        canvas.drawCircle(Offset(w * 0.34, h * 0.52), w * 0.15, dark);
+        canvas.drawCircle(Offset(w * 0.66, h * 0.52), w * 0.15, dark);
+        canvas.drawCircle(Offset(w * 0.5, h * 0.42), w * 0.2, light);
+        canvas.drawCircle(Offset(w * 0.5, h * 0.53), w * 0.16, dark);
+        break;
+      case PlantType.mushroom:
+        final a = Paint()..color = const Color(0xFFA6DDB8);
+        final b = Paint()..color = const Color(0xFF6CC48E);
+        canvas.drawCircle(Offset(w * 0.34, h * 0.5), w * 0.13, b);
+        canvas.drawCircle(Offset(w * 0.66, h * 0.5), w * 0.13, b);
+        canvas.drawCircle(Offset(w * 0.5, h * 0.4), w * 0.17, a);
+        canvas.drawCircle(Offset(w * 0.5, h * 0.53), w * 0.13, b);
+        break;
     }
+  }
 
-    // Glowing core.
-    canvas.drawCircle(c, w * 0.15, Paint()..color = color.withAlpha(60));
-    canvas.drawCircle(c, w * 0.085, Paint()..color = color);
+  void _fan(Canvas canvas, Offset base, double h, List<double> angles,
+      Color light, Color dark) {
+    for (int i = 0; i < angles.length; i++) {
+      final isCenter = angles[i] == 0;
+      _leaf(
+        canvas,
+        base,
+        angles[i],
+        h * (isCenter ? 0.46 : 0.38),
+        h * 0.11,
+        i.isEven ? light : dark,
+      );
+    }
+  }
 
-    // A few background stars.
-    final star = Paint()..color = color.withAlpha(200);
-    canvas.drawCircle(Offset(w * 0.13, h * 0.2), w * 0.03, star);
-    canvas.drawCircle(Offset(w * 0.88, h * 0.14), w * 0.025, star);
-    canvas.drawCircle(Offset(w * 0.9, h * 0.82), w * 0.03, star);
-    canvas.drawCircle(Offset(w * 0.1, h * 0.86), w * 0.022, star);
+  void _leaf(Canvas canvas, Offset base, double deg, double len, double wd,
+      Color color) {
+    canvas.save();
+    canvas.translate(base.dx, base.dy);
+    canvas.rotate(deg * 3.1415926535 / 180);
+    final p = Path()
+      ..moveTo(0, 0)
+      ..quadraticBezierTo(-wd, -len * 0.5, 0, -len)
+      ..quadraticBezierTo(wd, -len * 0.5, 0, 0)
+      ..close();
+    canvas.drawPath(p, Paint()..color = color);
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _GalaxyPainter old) => old.color != color;
+  bool shouldRepaint(covariant _PlantPainter old) =>
+      old.type != type || old.faded != faded;
 }
 
 /// ---------------------------------------------------------------------------
@@ -949,12 +810,12 @@ class _RootShellState extends State<RootShell> {
   // Stats (3) and Profile (4) use the teal palette
   bool get _teal => _index == 3 || _index == 4;
 
-  static final _items = <_NavItem>[
-    _NavItem.icon('Home', Icons.home_outlined),
-    _NavItem('Cosmos', (c, s) => GalaxyIcon(color: c, size: s)),
-    _NavItem.icon('Audio', Icons.headphones_outlined),
-    _NavItem.icon('Stats', Icons.bar_chart_rounded),
-    _NavItem.icon('Profile', Icons.person_outline_rounded),
+  static const _items = <_NavItem>[
+    _NavItem('Home', Icons.home_outlined),
+    _NavItem('Garden', Icons.eco_outlined),
+    _NavItem('Audio', Icons.headphones_outlined),
+    _NavItem('Stats', Icons.bar_chart_rounded),
+    _NavItem('Profile', Icons.person_outline_rounded),
   ];
 
   Widget _page(int i) {
@@ -962,7 +823,7 @@ class _RootShellState extends State<RootShell> {
       case 0:
         return const HomePage(key: ValueKey('home'));
       case 1:
-        return const PlaceholderPage(key: ValueKey('garden'), title: 'Garden');
+        return const GardenPage(key: ValueKey('garden'));
       case 2:
         return const AudioPage(key: ValueKey('audio'));
       case 3:
@@ -1008,7 +869,7 @@ class _RootShellState extends State<RootShell> {
         onTap: (i) => setState(() => _index = i),
         bg: _teal ? StatsColors.navBg : AppColors.navBg,
         borderColor:
-            _teal ? StatsColors.navBorder : const Color(0x662F5AA8),
+            _teal ? StatsColors.navBorder : const Color(0x662E6B52),
         accent: _teal ? StatsColors.mint : AppColors.mint,
       ),
     );
@@ -1017,12 +878,8 @@ class _RootShellState extends State<RootShell> {
 
 class _NavItem {
   final String label;
-  final Widget Function(Color color, double size) iconBuilder;
-
-  const _NavItem(this.label, this.iconBuilder);
-
-  factory _NavItem.icon(String label, IconData icon) =>
-      _NavItem(label, (c, s) => Icon(icon, color: c, size: s));
+  final IconData icon;
+  const _NavItem(this.label, this.icon);
 }
 
 class _BottomNav extends StatelessWidget {
@@ -1039,7 +896,7 @@ class _BottomNav extends StatelessWidget {
     required this.currentIndex,
     required this.onTap,
     this.bg = AppColors.navBg,
-    this.borderColor = const Color(0x662F5AA8),
+    this.borderColor = const Color(0x662E6B52),
     this.accent = AppColors.mint,
   });
 
@@ -1082,9 +939,12 @@ class _BottomNav extends StatelessWidget {
                       scale: selected ? 1.12 : 1.0,
                       duration: const Duration(milliseconds: 250),
                       curve: Curves.easeOutBack,
-                      child: items[i].iconBuilder(
-                        selected ? accent : accent.withAlpha(150),
-                        24,
+                      child: Icon(
+                        items[i].icon,
+                        size: 24,
+                        color: selected
+                            ? accent
+                            : accent.withAlpha(150),
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -1165,7 +1025,9 @@ class _HomePageState extends State<HomePage>
         _api.getSummary(),
         _api.getLastSession(),
       ]);
-      final techniques = _buildCatalog(results[0] as List<ApiTechnique>);
+      final techniques = (results[0] as List<ApiTechnique>)
+          .map((t) => Technique.fromApi(t))
+          .toList();
       final summary = results[1] as ApiSummary;
       final last = results[2] as ApiSession?;
 
@@ -1194,9 +1056,7 @@ class _HomePageState extends State<HomePage>
 
   Technique _techniqueForSession(ApiSession s, List<Technique> list) {
     for (final t in list) {
-      final sameId = t.id != null && t.id == s.techniqueId;
-      final sameSlug = t.slug != null && t.slug == s.techniqueSlug;
-      if (sameId || sameSlug) return t.withSession(s);
+      if (t.id == s.techniqueId) return t.withSession(s);
     }
     return Technique.fromSession(s);
   }
@@ -1400,7 +1260,7 @@ class _HomePageState extends State<HomePage>
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0x33152B5C),
+                        color: const Color(0x331F4A3A),
                         border: Border.all(
                           color: AppColors.cardBorder,
                           width: 1.2,
@@ -1565,7 +1425,7 @@ class _HomePageState extends State<HomePage>
           const SizedBox(height: 10),
           Row(
             children: [
-              PlantIcon(type: t.plant, size: 48),
+              Text(_flowerForTechnique(t), style: const TextStyle(fontSize: 42)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1603,7 +1463,7 @@ class _HomePageState extends State<HomePage>
                 height: 44,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: const Color(0x33152B5C),
+                  color: const Color(0x331F4A3A),
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
                     color: AppColors.cardBorder,
@@ -1700,9 +1560,9 @@ class _CardShell extends StatelessWidget {
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
-        color: const Color(0x66152B5C),
+        color: const Color(0x661F4A3A),
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: const Color(0xAA2F5AA8), width: 1.2),
+        border: Border.all(color: const Color(0xAA2E6B52), width: 1.2),
       ),
       child: child,
     );
@@ -1754,7 +1614,7 @@ class _VitalsCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            color: band.isConnected ? const Color(0x33152B5C) : AppColors.mint,
+            color: band.isConnected ? const Color(0x331F4A3A) : AppColors.mint,
             border: Border.all(
               color: band.isConnected ? AppColors.cardBorder : AppColors.mint,
               width: 1.2,
@@ -1789,7 +1649,7 @@ class _VitalsCard extends StatelessWidget {
           Container(
             height: 1,
             margin: const EdgeInsets.symmetric(horizontal: 16),
-            color: const Color(0x332F5AA8),
+            color: const Color(0x332E6B52),
           ),
           const SizedBox(height: 8),
           Padding(
@@ -1877,10 +1737,16 @@ class _TechniqueTile extends StatelessWidget {
             height: 56,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: locked ? const Color(0x33081433) : AppColors.tile,
+              color: locked ? const Color(0x33143225) : AppColors.tile,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: PlantIcon(type: technique.plant, size: 38, faded: locked),
+            child: Opacity(
+              opacity: locked ? 0.4 : 1,
+              child: Text(
+                _flowerForTechnique(technique),
+                style: const TextStyle(fontSize: 34),
+              ),
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -1913,7 +1779,7 @@ class _TechniqueTile extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------------------
-/// PLACEHOLDER PAGE (Cosmos)
+/// PLACEHOLDER PAGE (Garden)
 /// ---------------------------------------------------------------------------
 class PlaceholderPage extends StatelessWidget {
   final String title;

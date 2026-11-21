@@ -4,6 +4,12 @@ import 'main.dart';
 import 'library_page.dart';
 import 'my_music_page.dart';
 
+/// Audio-page accent colors: green accents on the existing green surfaces.
+class _AudioPageColors {
+  static const accent = Color(0xFF72D6A0);
+  static const accentText = Color(0xFFB4E8C9);
+  static const border = Color(0x665CBF8A);
+}
 
 /// AUDIO page: title + segmented tabs that switch between two separate pages.
 class AudioPage extends StatefulWidget {
@@ -18,7 +24,7 @@ class _AudioPageState extends State<AudioPage>
   static const _labels = ['Library', 'My music'];
 
   int _tab = 0;
-  int _dir = 1; // slide direction of the page transition
+  int _dir = 1;
 
   late final AnimationController _intro;
 
@@ -153,10 +159,11 @@ class _Segmented extends StatelessWidget {
       height: 50,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-  color: const Color(0x66152B5C), // Updated Deep Space translucent container
-  borderRadius: BorderRadius.circular(28),
-  border: Border.all(color: const Color(0xAA2F5AA8), width: 1.2), // Updated border color
-),
+        // Match the app's green card surface instead of the old navy-blue tint.
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: _AudioPageColors.border, width: 1.2),
+      ),
       child: Stack(
         children: [
           AnimatedAlign(
@@ -168,7 +175,7 @@ class _Segmented extends StatelessWidget {
               heightFactor: 1,
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppColors.cyan,
+                  color: _AudioPageColors.accent,
                   borderRadius: BorderRadius.circular(24),
                 ),
               ),
@@ -188,7 +195,9 @@ class _Segmented extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: sel ? AppColors.dark : AppColors.cyan,
+                          color: sel
+                              ? AppColors.dark
+                              : _AudioPageColors.accentText,
                         ),
                         child: Text(labels[i]),
                       ),

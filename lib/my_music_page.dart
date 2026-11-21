@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import 'main.dart';
 import 'audio_state.dart';
+import 'main.dart';
+import 'library_page.dart';
 import 'audio_widgets.dart';
+
+/// Green accents for the My Music page. Navy surfaces remain unchanged.
+class _MyMusicColors {
+  static const accent = Color(0xFF72D6A0);
+  static const accentText = Color(0xFFB4E8C9);
+  static const border = Color(0x665CBF8A);
+}
 
 /// MY MUSIC tab: audio the user imported from their device.
 class MyMusicPage extends StatelessWidget {
@@ -52,11 +59,13 @@ class MyMusicPage extends StatelessWidget {
                       onTap: () => runImport(context),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: AppColors.cardBorder,
+                            color: _MyMusicColors.border,
                             width: 1.4,
                           ),
                         ),
@@ -67,19 +76,23 @@ class MyMusicPage extends StatelessWidget {
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppColors.mint),
+                                    _MyMusicColors.accent,
+                                  ),
                                 ),
                               )
                             : const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.add_rounded,
-                                      size: 16, color: AppColors.mint),
+                                  Icon(
+                                    Icons.add_rounded,
+                                    size: 16,
+                                    color: _MyMusicColors.accent,
+                                  ),
                                   SizedBox(width: 4),
                                   Text(
                                     'Import',
                                     style: TextStyle(
-                                      color: AppColors.mint,
+                                      color: _MyMusicColors.accent,
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -119,8 +132,11 @@ class MyMusicPage extends StatelessWidget {
                                 if (audio.chosen.contains(t.id))
                                   const Padding(
                                     padding: EdgeInsets.only(right: 6),
-                                    child: Icon(Icons.check_circle_rounded,
-                                        size: 18, color: AppColors.mint),
+                                    child: Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 18,
+                                      color: _MyMusicColors.accent,
+                                    ),
                                   ),
                                 Pressable(
                                   pressedScale: 0.85,
@@ -130,7 +146,7 @@ class MyMusicPage extends StatelessWidget {
                                     child: Icon(
                                       Icons.delete_outline_rounded,
                                       size: 22,
-                                      color: AppColors.mintText,
+                                      color: _MyMusicColors.accentText,
                                     ),
                                   ),
                                 ),
@@ -164,16 +180,16 @@ class _EmptyState extends StatelessWidget {
               height: 76,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0x66152B5C), // card navy (was green)
+                color: const Color(0x66152B5C),
                 border: Border.all(
-                  color: AppColors.cardBorder,
+                  color: _MyMusicColors.border,
                   width: 1.2,
                 ),
               ),
               child: const Icon(
                 Icons.library_music_outlined,
                 size: 36,
-                color: AppColors.mint,
+                color: _MyMusicColors.accent,
               ),
             ),
             const SizedBox(height: 16),
@@ -192,7 +208,7 @@ class _EmptyState extends StatelessWidget {
               'Import audio from your device to play it during your sessions.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: AppColors.mintText,
+                color: _MyMusicColors.accentText,
                 fontSize: 13,
                 height: 1.4,
               ),
@@ -215,3 +231,4 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
+

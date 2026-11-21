@@ -1,9 +1,8 @@
-/// One reading sent by the ESP32 band, e.g.
-/// {"phase":"exhale","spo2_pct":98.8,"heart_rate_bpm":86.7,"hrv_ms":80.0,
-///  "stress":19.3,"steps":2269,"wrist_tilt_deg":-30.2,
-///  "activity":"stationary","demo":true}
+/// One reading sent by the ESP32 band.
+///
+/// The current firmware sends phase values: "inhale", "exhale", "hold",
+/// "none" (no skin contact), or "unknown" (not yet detected).
 class VitalsReading {
-  /// "inhale", "exhale" or "hold" (driven by the two buttons on the ESP32).
   final String phase;
   final double spo2;
   final double heartRate;
@@ -28,18 +27,25 @@ class VitalsReading {
     required this.at,
   });
 
-  static double _d(Object? v) => (v as num?)?.toDouble() ?? 0;
+  // Firmware sends JSON null until some sensor measurements are ready.
+  // Unavailable values are represented as 0.0.
+  static double _d(Object? value) => value is num ? value.toDouble() : 0.0;
 
-  factory VitalsReading.fromJson(Map<String, dynamic> j) => VitalsReading(
-        phase: (j['phase'] as String?) ?? 'hold',
-        spo2: _d(j['spo2_pct']),
-        heartRate: _d(j['heart_rate_bpm']),
-        hrv: _d(j['hrv_ms']),
-        stress: _d(j['stress']),
-        steps: (j['steps'] as num?)?.toInt() ?? 0,
-        wristTiltDeg: _d(j['wrist_tilt_deg']),
-        activity: (j['activity'] as String?) ?? 'stationary',
-        demo: (j['demo'] as bool?) ?? false,
-        at: DateTime.now(),
-      );
+  factory VitalsReading.fromJson(Map<String, dynamic> json) {
+    final rawPhase = json['phase'];
+    final rawActivity = json['activity'];
+
+    return VitalsReading(
+      phase: rawPhase is String ? rawPhase.toLowerCase() : 'unknown',
+      spo2: _d(json['spo2_pct']),
+      heartRate: _d(json['heart_rate_bpm']),
+      hrv: _d(json['hrv_ms']),
+      stress: _d(json['stress']),
+      steps: json['steps'] is num ? (json['steps'] as num).toInt() : 0,
+      wristTiltDeg: _d(json['wrist_tilt_deg']),
+      activity: rawActivity is String ? rawActivity : 'stationary',
+      demo: json['demo'] is bool ? json['demo'] as bool : false,
+      at: DateTime.now(),
+    );
+  }
 }

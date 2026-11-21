@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -11,16 +10,20 @@ import 'vitals_reading.dart';
 enum BandStatus { idle, scanning, connecting, connected }
 
 class VitalsService extends ChangeNotifier {
-  // Must match the ESP32 sketch.
+  // Must match the new ESP32 firmware (Nordic UART Service / NUS).
   static const String deviceName = 'ESP32_Breathing';
 
   static final Guid serviceUuid =
-      Guid('12345678-1234-1234-1234-123456789000');
-
-  static final Guid characteristicUuid =
-      Guid('12345678-1234-1234-1234-123456789001');
+      Guid('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
+  // ESP32 -> phone: notifications containing newline-terminated JSON.
+  static final Guid txCharacteristicUuid =
+      Guid('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
+  // Phone -> ESP32: write commands, currently 'c' (calibrate) and 'f' (flip).
+  static final Guid rxCharacteristicUuid =
+      Guid('6E400002-B5A3-F393-E0A9-E50E24DCCA9E');
 
   static const Duration staleAfter = Duration(seconds: 3);
+  static const int _maxBufferLength = 8192;
 
   BandStatus status = BandStatus.idle;
   String? error;
@@ -29,22 +32,21 @@ class VitalsService extends ChangeNotifier {
   final List<VitalsReading> history = [];
 
   BluetoothDevice? _device;
+  BluetoothCharacteristic? _txCharacteristic;
+  BluetoothCharacteristic? _rxCharacteristic;
 
   StreamSubscription<List<int>>? _dataSub;
   StreamSubscription<BluetoothConnectionState>? _connSub;
-
   Timer? _staleTimer;
 
   bool _lastLive = false;
+  bool _manualDisconnect = false;
   String _buf = '';
-
   final List<DateTime> _inhaleStarts = [];
 
   bool get isConnected => status == BandStatus.connected;
-
   bool get isBusy =>
-      status == BandStatus.scanning ||
-      status == BandStatus.connecting;
+      status == BandStatus.scanning || status == BandStatus.connecting;
 
   bool get isLive =>
       isConnected &&
@@ -52,22 +54,15 @@ class VitalsService extends ChangeNotifier {
       DateTime.now().difference(latest!.at) < staleAfter;
 
   double? get breathsPerMinute {
-    final cutoff = DateTime.now().subtract(
-      const Duration(seconds: 90),
-    );
-
-    final recent =
-        _inhaleStarts.where((t) => t.isAfter(cutoff)).toList();
-
+    final cutoff = DateTime.now().subtract(const Duration(seconds: 90));
+    final recent = _inhaleStarts.where((t) => t.isAfter(cutoff)).toList();
     if (recent.length < 2) return null;
 
     final spanSec =
         recent.last.difference(recent.first).inMilliseconds / 1000.0;
-
     if (spanSec <= 0) return null;
 
     final rate = (recent.length - 1) / spanSec * 60;
-
     return (rate >= 3 && rate <= 60) ? rate : null;
   }
 
@@ -79,151 +74,131 @@ class VitalsService extends ChangeNotifier {
     if (status != BandStatus.idle) return;
 
     error = null;
+    _manualDisconnect = false;
     _setStatus(BandStatus.scanning);
 
     try {
-      // 1. Request Android Bluetooth permissions.
-      final scanPermission =
-          await Permission.bluetoothScan.request();
+      await _requestBluetoothPermissions();
 
-      final connectPermission =
-          await Permission.bluetoothConnect.request();
-
-      if (!scanPermission.isGranted ||
-          !connectPermission.isGranted) {
-        throw 'Bluetooth permissions denied. Please allow Nearby Devices permission in Android settings.';
-      }
-
-      // 2. Check Bluetooth adapter.
       final adapter = await FlutterBluePlus.adapterState.first;
-
       if (adapter != BluetoothAdapterState.on) {
-        throw 'Turn on Bluetooth and try again.';
+        throw Exception('Turn on Bluetooth and try again.');
       }
 
-      // 3. Scan for ESP32.
-      debugPrint('Starting ESP32 scan...');
-
+      debugPrint('Scanning for $deviceName / NUS service...');
       final device = await _scanForBand();
-
       if (device == null) {
-        throw 'Band not found. Check that ESP32_Breathing is powered on.';
+        throw Exception(
+          'Band not found. Check that the new ESP32 is powered on and advertising.',
+        );
       }
 
       debugPrint('ESP32 found: ${device.platformName}');
-
       _setStatus(BandStatus.connecting);
 
-      // 4. Connect.
-      // ignore: deprecated_member_use
       await device.connect(
         license: License.free,
         timeout: const Duration(seconds: 15),
       );
-
       _device = device;
 
-      debugPrint('BLE CONNECTED');
+      _connSub = device.connectionState.listen((state) {
+        debugPrint('BLE CONNECTION STATE: $state');
+        if (state == BluetoothConnectionState.disconnected &&
+            !_manualDisconnect) {
+          _handleUnexpectedDisconnect();
+        }
+      });
 
-      // 5. Monitor connection state.
-      _connSub = device.connectionState.listen((s) {
-        debugPrint('BLE CONNECTION STATE: $s');
+      debugPrint('Discovering BLE services...');
+      final services = await device.discoverServices();
+      for (final service in services) {
+        debugPrint('SERVICE: ${service.uuid}');
+        for (final characteristic in service.characteristics) {
+          debugPrint('CHARACTERISTIC: ${characteristic.uuid}');
+        }
+      }
 
-        if (s == BluetoothConnectionState.disconnected &&
-            isConnected) {
-          error = 'Band disconnected.';
-          _teardown();
-          status = BandStatus.idle;
+      BluetoothService? service;
+      for (final candidate in services) {
+        if (candidate.uuid == serviceUuid) {
+          service = candidate;
+          break;
+        }
+      }
+      if (service == null) {
+        throw Exception('New ESP32 NUS service not found: $serviceUuid');
+      }
+
+      BluetoothCharacteristic? tx;
+      BluetoothCharacteristic? rx;
+      for (final characteristic in service.characteristics) {
+        if (characteristic.uuid == txCharacteristicUuid) tx = characteristic;
+        if (characteristic.uuid == rxCharacteristicUuid) rx = characteristic;
+      }
+
+      if (tx == null) {
+        throw Exception('ESP32 TX notification characteristic not found.');
+      }
+      if (!tx.properties.notify && !tx.properties.indicate) {
+        throw Exception('ESP32 TX characteristic does not support notifications.');
+      }
+      if (rx == null || !rx.properties.write) {
+        debugPrint('ESP32 RX write characteristic unavailable; commands disabled.');
+      }
+
+      _txCharacteristic = tx;
+      _rxCharacteristic = rx;
+      _buf = '';
+
+      await tx.setNotifyValue(true);
+      _dataSub = tx.onValueReceived.listen(
+        _onBytes,
+        onError: (Object e) {
+          error = 'BLE data stream error: $e';
+          notifyListeners();
+        },
+      );
+
+      _staleTimer?.cancel();
+      _staleTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        final live = isLive;
+        if (live != _lastLive) {
+          _lastLive = live;
           notifyListeners();
         }
       });
 
-      // 6. Discover services.
-      debugPrint('Discovering BLE services...');
-
-      final services = await device.discoverServices();
-
-      for (final s in services) {
-        debugPrint('SERVICE: ${s.uuid}');
-
-        for (final c in s.characteristics) {
-          debugPrint('CHARACTERISTIC: ${c.uuid}');
-        }
-      }
-
-      // 7. Find matching service.
-      final matchingServices = services.where(
-        (s) => s.uuid == serviceUuid,
-      );
-
-      if (matchingServices.isEmpty) {
-        throw 'Expected BLE service not found: $serviceUuid';
-      }
-
-      final service = matchingServices.first;
-
-      // 8. Find matching characteristic.
-      final matchingCharacteristics =
-          service.characteristics.where(
-        (c) => c.uuid == characteristicUuid,
-      );
-
-      if (matchingCharacteristics.isEmpty) {
-        throw 'Expected BLE characteristic not found: $characteristicUuid';
-      }
-
-      final characteristic = matchingCharacteristics.first;
-
-      if (!characteristic.properties.notify &&
-          !characteristic.properties.indicate) {
-        throw 'The BLE characteristic does not support notifications or indications.';
-      }
-
-      debugPrint('Matched BLE service and characteristic.');
-
-      // 9. Subscribe to incoming ESP32 data.
-      _buf = '';
-
-      await characteristic.setNotifyValue(true);
-
-      _dataSub =
-          characteristic.onValueReceived.listen(_onBytes);
-
-      debugPrint('BLE notifications enabled.');
-
-      // 10. Monitor whether data is arriving.
-      _staleTimer = Timer.periodic(
-        const Duration(seconds: 1),
-        (_) {
-          final live = isLive;
-
-          if (live != _lastLive) {
-            _lastLive = live;
-            notifyListeners();
-          }
-        },
-      );
-
       _setStatus(BandStatus.connected);
-
-      debugPrint('ESP32 BAND READY.');
+      debugPrint('New ESP32 connected. NUS notifications enabled.');
     } catch (e, stackTrace) {
-      debugPrint('FULL BLE ERROR: ${e.toString()}');
+      debugPrint('FULL BLE ERROR: $e');
       debugPrint('STACK TRACE: $stackTrace');
-
       error = e.toString();
 
-      final d = _device;
-
-      _teardown();
-
+      final connectedDevice = _device;
+      _manualDisconnect = true;
+      await _teardown();
       try {
-        await d?.disconnect();
+        await connectedDevice?.disconnect();
       } catch (disconnectError) {
         debugPrint('Disconnect cleanup error: $disconnectError');
       }
-
       _setStatus(BandStatus.idle);
+    }
+  }
+
+  Future<void> _requestBluetoothPermissions() async {
+    // Android 12+ requires Nearby Devices permissions. Older Android versions
+    // use location permission for BLE scanning.
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+
+    final scan = await Permission.bluetoothScan.request();
+    final connect = await Permission.bluetoothConnect.request();
+    if (!scan.isGranted || !connect.isGranted) {
+      throw Exception(
+        'Bluetooth permissions denied. Allow Nearby Devices permission in Android settings.',
+      );
     }
   }
 
@@ -233,21 +208,18 @@ class VitalsService extends ChangeNotifier {
 
   Future<BluetoothDevice?> _scanForBand() async {
     final found = Completer<BluetoothDevice?>();
-
-    final sub = FlutterBluePlus.onScanResults.listen(
-      (results) {
-        for (final r in results) {
-          final matches =
-              r.advertisementData.serviceUuids.contains(serviceUuid) ||
-              r.advertisementData.advName == deviceName ||
-              r.device.platformName == deviceName;
-
-          if (matches && !found.isCompleted) {
-            found.complete(r.device);
-          }
+    final subscription = FlutterBluePlus.onScanResults.listen((results) {
+      for (final result in results) {
+        final matches =
+            result.advertisementData.serviceUuids.contains(serviceUuid) ||
+            result.advertisementData.advName == deviceName ||
+            result.device.platformName == deviceName;
+        if (matches && !found.isCompleted) {
+          found.complete(result.device);
+          break;
         }
-      },
-    );
+      }
+    });
 
     try {
       await FlutterBluePlus.startScan(
@@ -259,88 +231,121 @@ class VitalsService extends ChangeNotifier {
         onTimeout: () => null,
       );
     } finally {
-      await sub.cancel();
-      await FlutterBluePlus.stopScan();
+      await subscription.cancel();
+      try {
+        await FlutterBluePlus.stopScan();
+      } catch (_) {
+        // Scan may already have stopped after its timeout.
+      }
     }
   }
+
+  // -------------------------------------------------------------------------
+  // PHONE -> ESP32 COMMANDS
+  // -------------------------------------------------------------------------
+
+  /// Sends a single-character command supported by the ESP32 firmware.
+  /// 'c' starts breathing calibration; 'f' flips inhale/exhale direction.
+  Future<void> sendCommand(String command) async {
+    if (!isConnected) throw StateError('Connect to the band first.');
+    if (command != 'c' && command != 'C' && command != 'f' && command != 'F') {
+      throw ArgumentError.value(command, 'command', 'Only c or f is supported.');
+    }
+
+    final characteristic = _rxCharacteristic;
+    if (characteristic == null || !characteristic.properties.write) {
+      throw StateError('The ESP32 command characteristic is unavailable.');
+    }
+
+    await characteristic.write(utf8.encode(command), withoutResponse: false);
+    debugPrint('Sent ESP32 command: $command');
+  }
+
+  Future<void> calibrateBand() => sendCommand('c');
+  Future<void> flipBreathingDirection() => sendCommand('f');
 
   // -------------------------------------------------------------------------
   // DISCONNECT
   // -------------------------------------------------------------------------
 
   Future<void> disconnect() async {
-    final d = _device;
+    final device = _device;
+    _manualDisconnect = true;
 
-    _teardown();
-
+    await _teardown();
     latest = null;
     history.clear();
     _inhaleStarts.clear();
-
     error = null;
-
     _setStatus(BandStatus.idle);
 
     try {
-      await d?.disconnect();
+      await device?.disconnect();
     } catch (e) {
       debugPrint('Disconnect error: $e');
     }
+  }
+
+  void _handleUnexpectedDisconnect() {
+    if (_manualDisconnect || status == BandStatus.idle) return;
+    error = 'Band disconnected.';
+    unawaited(_teardown());
+    status = BandStatus.idle;
+    notifyListeners();
   }
 
   // -------------------------------------------------------------------------
   // INCOMING ESP32 DATA
   // -------------------------------------------------------------------------
 
+  /// Firmware sends one JSON object followed by '\n'. BLE may split a line
+  /// across notifications or deliver multiple lines together, so buffer until
+  /// complete newline-delimited messages are available.
   void _onBytes(List<int> bytes) {
+    if (bytes.isEmpty) return;
+
     _buf += utf8.decode(bytes, allowMalformed: true);
+    if (_buf.length > _maxBufferLength) {
+      debugPrint('BLE receive buffer exceeded limit; discarding incomplete data.');
+      final lastNewline = _buf.lastIndexOf('\n');
+      _buf = lastNewline >= 0 ? _buf.substring(lastNewline + 1) : '';
+    }
 
-    int end;
-
-    while ((end = _buf.indexOf('}')) != -1) {
-      final raw = _buf.substring(0, end + 1);
-
-      _buf = _buf.substring(end + 1);
-
-      final start = raw.indexOf('{');
-
-      if (start == -1) continue;
+    int newline;
+    while ((newline = _buf.indexOf('\n')) >= 0) {
+      final line = _buf.substring(0, newline).trim();
+      _buf = _buf.substring(newline + 1);
+      if (line.isEmpty) continue;
 
       try {
-        final json =
-            jsonDecode(raw.substring(start)) as Map<String, dynamic>;
-
-        if (!json.containsKey('heart_rate_bpm')) {
+        final decoded = jsonDecode(line);
+        if (decoded is! Map<String, dynamic>) {
+          debugPrint('Skipping non-object ESP32 packet.');
           continue;
         }
-
-        _accept(VitalsReading.fromJson(json));
+        // The firmware includes these keys even while their values are null.
+        if (!decoded.containsKey('phase')) {
+          debugPrint('Skipping ESP32 packet without phase.');
+          continue;
+        }
+        _accept(VitalsReading.fromJson(decoded));
       } catch (e) {
-        debugPrint('Skipping bad packet: $e');
+        debugPrint('Skipping malformed ESP32 JSON line: $e');
       }
     }
   }
 
-  void _accept(VitalsReading r) {
-    if (r.phase == 'inhale' &&
-        latest?.phase != 'inhale') {
-      _inhaleStarts.add(r.at);
-
-      if (_inhaleStarts.length > 12) {
-        _inhaleStarts.removeAt(0);
-      }
+  void _accept(VitalsReading reading) {
+    if (reading.phase == 'inhale' && latest?.phase != 'inhale') {
+      _inhaleStarts.add(reading.at);
+      if (_inhaleStarts.length > 120) _inhaleStarts.removeAt(0);
     }
 
-    latest = r;
-
-    history.add(r);
-
-    if (history.length > 240) {
-      history.removeAt(0);
-    }
+    latest = reading;
+    history.add(reading);
+    if (history.length > 240) history.removeAt(0);
 
     _lastLive = true;
-
     notifyListeners();
   }
 
@@ -348,28 +353,29 @@ class VitalsService extends ChangeNotifier {
   // HELPERS
   // -------------------------------------------------------------------------
 
-  void _teardown() {
-    _dataSub?.cancel();
-    _connSub?.cancel();
+  Future<void> _teardown() async {
+    await _dataSub?.cancel();
+    await _connSub?.cancel();
     _staleTimer?.cancel();
 
     _dataSub = null;
     _connSub = null;
     _staleTimer = null;
-
+    _txCharacteristic = null;
+    _rxCharacteristic = null;
     _lastLive = false;
     _device = null;
     _buf = '';
   }
 
-  void _setStatus(BandStatus s) {
-    status = s;
+  void _setStatus(BandStatus nextStatus) {
+    status = nextStatus;
     notifyListeners();
   }
 
   @override
   void dispose() {
-    _teardown();
+    unawaited(_teardown());
     super.dispose();
   }
 }

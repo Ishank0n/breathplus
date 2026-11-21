@@ -8,22 +8,24 @@ import 'main.dart';
 import 'stats_repository.dart';
 
 /// ---------------------------------------------------------------------------
-/// THEME (Statistics now shares the app's navy / Nebula Cyan palette)
+/// THEME (consistent green accent palette)
 /// ---------------------------------------------------------------------------
-/// Most values point at AppColors so the whole app stays in sync. main.dart's
-/// RootShell also reads this class for the Stats and Profile tabs.
+/// Keep the page's accents green so chart bars, labels and indicators do not
+/// mix the green accent with the previous blue accent shades.
 class StatsColors {
-  static const bgTop = AppColors.bgTop; // 0xFF0C1A3D Orbit Navy
-  static const bgBottom = AppColors.bgBottom; // 0xFF050B1F Deep Space
-  static const card = AppColors.card; // 0xFF152B5C
-  static const cardBorder = AppColors.cardBorder; // 0xFF2F5AA8
-  static const mint = AppColors.mint; // 0xFF5CB8FF Nebula Cyan
-  static const bar = Color(0xFF2A4580);
-  static const white = AppColors.white; // 0xFFFFFFFF
-  static const muted = AppColors.mintText; // 0xFF9FD4FF
-  static const label = Color(0xFF7DB4E6);
-  static const navBg = AppColors.navBg; // 0xFF0C1A3D
-  static const navBorder = Color(0x662F5AA8);
+  static const bgTop = AppColors.bgTop;
+  static const bgBottom = AppColors.bgBottom;
+  static const card = AppColors.card;
+  static const cardBorder = Color(0x6648A982);
+
+  static const mint = Color(0xFF63D6A5);
+  static const bar = Color(0xFF286B55);
+  static const white = AppColors.white;
+  static const muted = Color(0xFF9BE7C5);
+  static const label = Color(0xFF83CFA9);
+
+  static const navBg = AppColors.navBg;
+  static const navBorder = Color(0x6648A982);
 }
 
 /// ---------------------------------------------------------------------------

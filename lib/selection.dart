@@ -7,11 +7,11 @@ import 'band_screen.dart'
 
 /// First screen of the app: choose between Plants and Space.
 ///
-/// [plantsBuilder] should return the root widget of your existing project
-/// (the one that has Home / Stats / Profile). Space does nothing for now.
+/// [plantsBuilder] should return the root widget of your existing project.
+/// [onSpace] opens the Space app when the Space button is tapped.
 class ModeSelectionScreen extends StatelessWidget {
   final WidgetBuilder plantsBuilder;
-  final VoidCallback? onSpace; // null = does nothing yet
+  final VoidCallback? onSpace;
 
   const ModeSelectionScreen({
     super.key,
@@ -22,7 +22,7 @@ class ModeSelectionScreen extends StatelessWidget {
   void _openPlants(BuildContext context) {
     // pushReplacement so the back button doesn't return to this screen.
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: plantsBuilder),
+      MaterialPageRoute<void>(builder: plantsBuilder),
     );
   }
 
@@ -37,7 +37,11 @@ class ModeSelectionScreen extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFF12301F), Color(0xFF0D1F1A), Color(0xFF091510)],
+              colors: [
+                Color(0xFF12301F),
+                Color(0xFF0D1F1A),
+                Color(0xFF091510),
+              ],
             ),
           ),
           child: SafeArea(
@@ -45,8 +49,7 @@ class ModeSelectionScreen extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               children: [
                 const SizedBox(height: 8),
-                Text('Choose your world',
-                    style: serif(28, color: Colors.white)),
+                Text('Choose your world', style: serif(28, color: Colors.white)),
                 const SizedBox(height: 4),
                 const Text(
                   'Same breathing techniques, two ways to grow.',
@@ -65,17 +68,17 @@ class ModeSelectionScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 _ModeCard(
-  world: celestialWorld,
-  title: 'Space',
-  subtitle: 'Drift through deep space, one breath at a time.',
-  button: 'Choose Space',
-  glyphKind: 1,
-  gradient: const [
-    Color(0xFF0F2544), // Deep ocean/midnight blue (top)
-    Color(0xFF071120), // Abyssal dark navy (bottom)
-                      ],
-  border: const Color(0x4D60A5FA), // Crisp translucent starlight blue
-  onTap: onSpace ?? () {},
+                  world: celestialWorld,
+                  title: 'Space',
+                  subtitle: 'Drift through deep space, one breath at a time.',
+                  button: 'Choose Space',
+                  glyphKind: 1,
+                  gradient: const [
+                    Color(0xFF0F2544),
+                    Color(0xFF071120),
+                  ],
+                  border: const Color(0x4D60A5FA),
+                  onTap: onSpace ?? () {},
                 ),
               ],
             ),
@@ -124,18 +127,18 @@ class _ModeCard extends StatelessWidget {
           SizedBox(
             height: 150,
             child: Center(
-             child: glyphKind == 1
-        ? Image.asset(
-        'assets/spiral_galaxy.png',
-        width: 110,
-        height: 110,
-        fit: BoxFit.contain,
-                      )
-        : GlyphIcon(
-        celestial: world.celestial,
-        kind: glyphKind,
-        size: 110,
-              ),
+              child: glyphKind == 1
+                  ? Image.asset(
+                      'assets/spiral_galaxy.png',
+                      width: 110,
+                      height: 110,
+                      fit: BoxFit.contain,
+                    )
+                  : GlyphIcon(
+                      celestial: world.celestial,
+                      kind: glyphKind,
+                      size: 110,
+                    ),
             ),
           ),
           Text(title, style: serif(24, color: Colors.white)),
@@ -151,8 +154,10 @@ class _ModeCard extends StatelessWidget {
                 foregroundColor: world.ink,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: const StadiumBorder(),
-                textStyle:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
               ),
               child: Text(button),
             ),

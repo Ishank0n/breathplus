@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
 
-// Re-uses AppColors, Pressable, kSerif, kSerifFallback from main.dart
+// Re-uses AppColors, Pressable, kSerif and kSerifFallback from main.dart.
 import 'main.dart';
 import 'audio_state.dart';
+
+/// Shared green accent palette for all audio widgets.
+class _AudioWidgetColors {
+  static const accent = Color(0xFF72D6A0);
+  static const accentText = Color(0xFFB4E8C9);
+  static const border = Color(0x665CBF8A);
+  static const faintTrack = Color(0x553D805F);
+  static const divider = Color(0x665CBF8A);
+  static const tile = Color(0xFF173B2D);
+  static const surface = Color(0xFF1F4A3A);
+}
 
 /// Translucent card used across the audio pages.
 class AudioCard extends StatelessWidget {
@@ -23,9 +34,9 @@ class AudioCard extends StatelessWidget {
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
-        color: const Color(0x66152B5C),
+        color: AppColors.card.withValues(alpha: 0.78),
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: const Color(0xAA2F5AA8), width: 1.2),
+        border: Border.all(color: _AudioWidgetColors.border, width: 1.2),
       ),
       child: child,
     );
@@ -64,7 +75,7 @@ class SeekBar extends StatefulWidget {
 }
 
 class _SeekBarState extends State<SeekBar> {
-  double? _drag; // position under the finger while touching
+  double? _drag;
 
   void _commit() {
     final v = _drag;
@@ -76,7 +87,7 @@ class _SeekBarState extends State<SeekBar> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, c) {
-        const box = 22.0; // space reserved for the thumb
+        const box = 22.0;
         final usable = (c.maxWidth - box).clamp(0.0, double.infinity);
         final active = _drag != null;
         final v = (_drag ?? widget.value).clamp(0.0, 1.0).toDouble();
@@ -100,7 +111,6 @@ class _SeekBarState extends State<SeekBar> {
             child: Stack(
               alignment: Alignment.centerLeft,
               children: [
-                // Track
                 Positioned(
                   left: box / 2,
                   child: AnimatedContainer(
@@ -108,12 +118,11 @@ class _SeekBarState extends State<SeekBar> {
                     width: usable,
                     height: active ? 6 : 4,
                     decoration: BoxDecoration(
-                      color: const Color(0x552F5AA8),
+                      color: _AudioWidgetColors.faintTrack,
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
                 ),
-                // Played part
                 Positioned(
                   left: box / 2,
                   child: AnimatedContainer(
@@ -121,12 +130,11 @@ class _SeekBarState extends State<SeekBar> {
                     width: v * usable,
                     height: active ? 6 : 4,
                     decoration: BoxDecoration(
-                      color: AppColors.mint,
+                      color: _AudioWidgetColors.accent,
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
                 ),
-                // Thumb
                 Positioned(
                   left: v * usable,
                   child: SizedBox(
@@ -140,11 +148,12 @@ class _SeekBarState extends State<SeekBar> {
                         height: active ? 20 : 13,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: AppColors.mint,
+                          color: _AudioWidgetColors.accent,
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.mint
-                                  .withValues(alpha: active ? 0.35 : 0.15),
+                              color: _AudioWidgetColors.accent.withValues(
+                                alpha: active ? 0.35 : 0.15,
+                              ),
                               blurRadius: active ? 12 : 6,
                             ),
                           ],
@@ -178,7 +187,10 @@ class NowPlayingCard extends StatelessWidget {
             children: [
               const Text(
                 'Now playing',
-                style: TextStyle(color: AppColors.mintText, fontSize: 12),
+                style: TextStyle(
+                  color: _AudioWidgetColors.accentText,
+                  fontSize: 12,
+                ),
               ),
               const SizedBox(height: 3),
               AnimatedSwitcher(
@@ -246,7 +258,9 @@ class TrackTile extends StatelessWidget {
                   height: 46,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isCurrent ? AppColors.mint : AppColors.tile,
+                    color: isCurrent
+                        ? _AudioWidgetColors.accent
+                        : _AudioWidgetColors.tile,
                   ),
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 180),
@@ -281,7 +295,7 @@ class TrackTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: AppColors.mintText,
+                          color: _AudioWidgetColors.accentText,
                           fontSize: 12,
                         ),
                       ),
@@ -293,7 +307,7 @@ class TrackTile extends StatelessWidget {
             ),
           ),
         ),
-        Container(height: 1, color: const Color(0x992F5AA8)),
+        Container(height: 1, color: _AudioWidgetColors.divider),
       ],
     );
   }
@@ -324,11 +338,11 @@ class AudioPillButton extends StatelessWidget {
         height: height,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: filled ? AppColors.mint : Colors.transparent,
+          color: filled ? _AudioWidgetColors.accent : Colors.transparent,
           borderRadius: BorderRadius.circular(height),
           border: filled
               ? null
-              : Border.all(color: AppColors.cardBorder, width: 1.5),
+              : Border.all(color: _AudioWidgetColors.border, width: 1.5),
         ),
         child: loading
             ? SizedBox(
@@ -337,7 +351,7 @@ class AudioPillButton extends StatelessWidget {
                 child: CircularProgressIndicator(
                   strokeWidth: 2.4,
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    filled ? AppColors.dark : AppColors.mint,
+                    filled ? AppColors.dark : _AudioWidgetColors.accent,
                   ),
                 ),
               )
@@ -365,18 +379,18 @@ void audioSnack(
   messenger.showSnackBar(
     SnackBar(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: const Color(0xFF152B5C),
+      backgroundColor: _AudioWidgetColors.surface,
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: AppColors.cardBorder),
+        side: const BorderSide(color: _AudioWidgetColors.border),
       ),
       content: Text(message, style: const TextStyle(color: AppColors.white)),
       duration: const Duration(seconds: 3),
       action: (actionLabel != null && onAction != null)
           ? SnackBarAction(
               label: actionLabel,
-              textColor: AppColors.mint,
+              textColor: _AudioWidgetColors.accent,
               onPressed: onAction,
             )
           : null,
