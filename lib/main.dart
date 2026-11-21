@@ -236,7 +236,7 @@ class _GoogleLoginScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 25),
                     const Text(
-                      'Welcome to Breathe',
+                      'Welcome to Vento+',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'Georgia',
@@ -374,7 +374,7 @@ class BreatheApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Breathe',
+      title: 'Vento+',
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AppColors.bgBottom,
@@ -564,7 +564,7 @@ class Technique {
 /// (see VitalsService). Kept because other pages may still reference it.
 class HomeData {
   static const String greeting = 'Good evening';
-  static const String title = 'Breathe';
+  static const String title = 'Vento+';
   static const String streakLabel = '7-day streak';
   static const String breathRate = '14 /min';
   static const String oxygen = '98%';
@@ -988,6 +988,7 @@ class _HomePageState extends State<HomePage>
   bool _loading = true;
   bool _busy = false; // a session is being started
   String? _error;
+  String? _firstName;
 
   List<Technique> _techniques = const [];
   ApiSummary? _summary;
@@ -1024,12 +1025,14 @@ class _HomePageState extends State<HomePage>
         _api.listUserTechniques(),
         _api.getSummary(),
         _api.getLastSession(),
+        auth.firstName,
       ]);
       final techniques = (results[0] as List<ApiTechnique>)
           .map((t) => Technique.fromApi(t))
           .toList();
       final summary = results[1] as ApiSummary;
       final last = results[2] as ApiSession?;
+      final firstName = results[3] as String?;
 
       if (!mounted) return;
       setState(() {
@@ -1038,6 +1041,7 @@ class _HomePageState extends State<HomePage>
         _lastSession = last;
         _lastTechnique =
             last == null ? null : _techniqueForSession(last, techniques);
+        _firstName = firstName;
         _loading = false;
         _error = null;
       });
@@ -1078,9 +1082,12 @@ class _HomePageState extends State<HomePage>
 
   String get _greeting {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
+    final timeGreeting = hour < 12
+        ? 'Good morning'
+        : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+    return _firstName == null ? timeGreeting : '$timeGreeting, $_firstName';
   }
 
   // ---- Actions ------------------------------------------------------------

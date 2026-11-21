@@ -1,6 +1,6 @@
 // lib/auth_service.dart
 //
-// Google sign-in for the Breathe app, talking to the Flask server.
+// Google sign-in for the Vento+ app, talking to the Flask server.
 // Start the app with a plain `flutter run` (or the Run button). No extra flags needed.
 
 import 'dart:async';
@@ -39,6 +39,7 @@ class AuthService {
   static const _kAccess = 'access_token';
   static const _kRefresh = 'refresh_token';
   static const _kUserId = 'user_id';
+  static const _kGoogleDisplayName = 'google_display_name';
 
   final _storage = const FlutterSecureStorage();
   final _google = GoogleSignIn.instance;
@@ -86,7 +87,26 @@ class AuthService {
     if (res.statusCode != 200) {
       throw AuthException('Server login failed (${res.statusCode}): ${res.body}');
     }
+
     await _saveTokens(jsonDecode(res.body) as Map<String, dynamic>);
+
+    // Save the actual Google profile name, not a name guessed from the email.
+    final displayName = account.displayName?.trim();
+    if (displayName != null && displayName.isNotEmpty) {
+      await _storage.write(key: _kGoogleDisplayName, value: displayName);
+    } else {
+      await _storage.delete(key: _kGoogleDisplayName);
+    }
+  }
+
+  /// First word of the Google profile's display name (e.g. "Ishan").
+  /// Stored securely so it remains available after the app is restarted.
+  Future<String?> get firstName async {
+    final displayName = (await _storage.read(key: _kGoogleDisplayName))?.trim();
+    if (displayName == null || displayName.isEmpty) return null;
+
+    final parts = displayName.split(RegExp(r'\s+'));
+    return parts.isEmpty || parts.first.isEmpty ? null : parts.first;
   }
 
   /// Current access token (null when signed out). Used by breathe_api.dart.
@@ -212,5 +232,6 @@ class AuthService {
     await _storage.delete(key: _kAccess);
     await _storage.delete(key: _kRefresh);
     await _storage.delete(key: _kUserId);
+    await _storage.delete(key: _kGoogleDisplayName);
   }
 }
