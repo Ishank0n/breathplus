@@ -90,7 +90,8 @@ import 'package:video_player/video_player.dart';
     AudioTrack? _sessionTrack;
     bool _done = false;
 
-    // One looping MP4 flower animation is loaded for each breathing exercise.
+    // Each MP4 grows from its first frame to its final frame over the full
+    // duration of the breathing exercise.
     VideoPlayerController? _flowerVideoController;
     bool _flowerVideoReady = false;
     bool _flowerVideoFailed = false;
@@ -154,8 +155,22 @@ import 'package:video_player/video_player.dart';
 
       try {
         await controller.initialize();
-        await controller.setLooping(true);
+        await controller.setLooping(false);
         await controller.setVolume(0);
+
+        // Match the complete plant-growth animation to the exercise duration.
+        // Example: a 12-second source video in a 3-minute session plays at
+        // 12 / 180 = 0.0667x, reaching the final plant at the session end.
+        final exerciseDuration = Duration(
+          seconds: math.max(1, widget.technique.minutes * 60).toInt(),
+        );
+        final sourceDuration = controller.value.duration;
+        if (sourceDuration.inMilliseconds > 0) {
+          final playbackSpeed = sourceDuration.inMilliseconds /
+              exerciseDuration.inMilliseconds;
+          await controller.setPlaybackSpeed(playbackSpeed);
+        }
+        await controller.seekTo(Duration.zero);
 
         if (!mounted) {
           await controller.dispose();
@@ -167,6 +182,10 @@ import 'package:video_player/video_player.dart';
           _flowerVideoFailed = false;
         });
         await controller.play();
+        debugPrint(
+          'Flower growth duration: ${controller.value.duration.inSeconds}s source, '
+          '${widget.technique.minutes} minute exercise',
+        );
       } catch (error) {
         debugPrint('Could not load flower animation "$_flowerVideoAsset": $error');
         await controller.dispose();
@@ -667,6 +686,38 @@ import 'package:video_player/video_player.dart';
       );
     }
 
+    // Fine-tune each source video independently. Values are fractions of the
+    // video viewport width; positive moves the plant right, negative left.
+    // These offsets center the POT (the visual anchor), not necessarily the
+    // widest part of the foliage.
+    double get _flowerVideoOffsetX {
+      String normalize(String value) =>
+          value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+
+      final nameKey = normalize(widget.technique.name);
+      final slugKey = normalize(widget.technique.slug ?? '');
+      const offsets = <String, double>{
+        'boxbreathing': -0.025,
+        'box': -0.025,
+        '46breathing': 0.0,
+        '46': 0.0,
+        '55coherentbreathing': 0.008,
+        '55coherent': 0.008,
+        'pursedlipbreathing': 0.008,
+        'pursedlip': 0.008,
+        'extendedexhale12': 0.030,
+        'extendedexhale': 0.030,
+        'physiologicalsigh': 0.035,
+        '426breathing': 0.008,
+        'alternatenostrilbreathing': 0.025,
+        'alternatenostril': 0.025,
+        'hummingbeebreath': 0.015,
+        'hummingbee': 0.015,
+      };
+
+      return offsets[nameKey] ?? offsets[slugKey] ?? 0.0;
+    }
+
     Widget _circle(double s, double diameter) {
       return Transform.scale(
         scale: s,
@@ -707,13 +758,16 @@ import 'package:video_player/video_player.dart';
                     child: SizedBox(
                       width: diameter * 0.88,
                       height: diameter * 0.88,
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        clipBehavior: Clip.hardEdge,
-                        child: SizedBox(
-                          width: _flowerVideoController!.value.size.width,
-                          height: _flowerVideoController!.value.size.height,
-                          child: VideoPlayer(_flowerVideoController!),
+                      child: Transform.translate(
+                        offset: Offset(diameter * _flowerVideoOffsetX, 0),
+                        child: FittedBox(
+                          fit: BoxFit.cover,
+                          clipBehavior: Clip.hardEdge,
+                          child: SizedBox(
+                            width: _flowerVideoController!.value.size.width,
+                            height: _flowerVideoController!.value.size.height,
+                            child: VideoPlayer(_flowerVideoController!),
+                          ),
                         ),
                       ),
                     ),
