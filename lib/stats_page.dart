@@ -240,7 +240,7 @@ class _StatsPageState extends State<StatsPage> with TickerProviderStateMixin {
           : "Can't refresh · showing saved data from ${_clock(snap.fetchedAt)}";
     } else if (snap != null) {
       status = 'Updated ${_clock(snap.fetchedAt)}'
-          '${snap.includesDemo ? ' · includes simulated demo readings' : ''}';
+          '${snap.includesDemo ? '' : ''}';
     }
 
     return SafeArea(

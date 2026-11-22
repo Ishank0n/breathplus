@@ -23,13 +23,14 @@ dependencies:
   provider: ^6.1.5+1
   permission_handler: ^12.0.1
   flutter_local_notifications: ^19.5.0
-  flutter_timezone: ^5.0.1
+  flutter_timezone: ^5.0.0
   timezone: ^0.10.1
   google_sign_in: ^7.0.0
   flutter_secure_storage: ^9.0.0
-  http: ^1.2.0
+  http: ^1.6.0
 
 dev_dependencies:
+  flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
@@ -41,3 +42,13 @@ flutter:
     - assets/images/garden-wall.png
     - assets/audio/
     - assets/flower/
+    - assets/images/plants/
+    - assets/images/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  remove_alpha_ios: true
+  adaptive_icon_background: "#163D2B"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"

@@ -13,10 +13,9 @@ import 'reminder_service.dart';
 /// PLACEHOLDER DATA  (replace with real data / state management)
 /// ---------------------------------------------------------------------------
 class ProfileData {
-  static const int bandBattery = 78;
   static const String bandLastSync = '2 min ago';
   static const String footnote =
-      'Breathe+ supports stress management and well-being. It does not '
+      'Vento+ supports stress management and well-being. It does not '
       'diagnose or treat any condition.';
 }
 
@@ -49,17 +48,9 @@ class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin {
   // Settings state (placeholders)
   bool _lightCues = true;
-  bool _hapticCues = true;
   bool _dailyReminder = false; // loaded from storage in initState
   TimeOfDay _time = const TimeOfDay(hour: 20, minute: 0);
-  bool _bandPaired = true;
   bool _loggingOut = false;
-  final Map<String, bool> _health = {
-    'Heart rate': true,
-    'Blood oxygen': true,
-    'Steps': true,
-    'Calories burnt': false,
-  };
 
   late final AnimationController _intro;
 
@@ -278,12 +269,11 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   void _openBand() {
+    final bandService = context.read<VitalsService>();
     _openSheet(
       (_) => _BandSheet(
-        paired: _bandPaired,
-        battery: ProfileData.bandBattery,
+        service: bandService,
         lastSync: ProfileData.bandLastSync,
-        onPairedChanged: (v) => setState(() => _bandPaired = v),
       ),
     );
   }
@@ -312,15 +302,6 @@ class _ProfilePageState extends State<ProfilePage>
     }
   }
 
-  void _openHealth() {
-    _openSheet(
-      (_) => _HealthSheet(
-        values: Map<String, bool>.from(_health),
-        onChanged: (k, v) => setState(() => _health[k] = v),
-      ),
-    );
-  }
-
   void _openPrivacy() {
     _openSheet(
       (_) => _PrivacySheet(
@@ -333,6 +314,11 @@ class _ProfilePageState extends State<ProfilePage>
   // ---- Build -----------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
+    final bandService = context.watch<VitalsService>();
+    final bandStatus = bandService.isConnected
+        ? 'Paired'
+        : (bandService.isBusy ? 'Connecting…' : 'Not paired');
+
     final name = !_userLoaded
         ? 'Loading…'
         : (_userName.isEmpty ? 'Your profile' : _userName);
@@ -342,22 +328,13 @@ class _ProfilePageState extends State<ProfilePage>
     final rows = <Widget>[
       _SettingRow(
         label: 'Band',
-        trailing: _ValueText(
-          _bandPaired
-              ? 'Paired · ${ProfileData.bandBattery}%'
-              : 'Not paired',
-        ),
+        trailing: _ValueText(bandStatus),
         onTap: _openBand,
       ),
       _SettingRow(
         label: 'Light cues',
         trailing: _CheckBox(value: _lightCues),
         onTap: () => _toggle(_lightCues, (v) => _lightCues = v),
-      ),
-      _SettingRow(
-        label: 'Haptic cues',
-        trailing: _CheckBox(value: _hapticCues),
-        onTap: () => _toggle(_hapticCues, (v) => _hapticCues = v),
       ),
       _SettingRow(
         label: 'Daily reminder',
@@ -369,11 +346,6 @@ class _ProfilePageState extends State<ProfilePage>
         dim: !_dailyReminder,
         trailing: _ValueText(_time.format(context)),
         onTap: _pickTime,
-      ),
-      _SettingRow(
-        label: 'Health data access',
-        trailing: const _ValueText('Manage'),
-        onTap: _openHealth,
       ),
       _SettingRow(
         label: 'Privacy and help',
@@ -404,7 +376,7 @@ class _ProfilePageState extends State<ProfilePage>
               _stagger(
                 0,
                 const Text(
-                  'You and settings',
+                  'User Profile',
                   style: TextStyle(
                     fontFamily: kSerif,
                     fontFamilyFallback: kSerifFallback,
@@ -807,18 +779,14 @@ class _PillButton extends StatelessWidget {
   }
 }
 
-/// Band: status, battery, sync and pair / unpair.
+/// Band status is driven by the real VitalsService BLE connection.
 class _BandSheet extends StatefulWidget {
-  final bool paired;
-  final int battery;
+  final VitalsService service;
   final String lastSync;
-  final ValueChanged<bool> onPairedChanged;
 
   const _BandSheet({
-    required this.paired,
-    required this.battery,
+    required this.service,
     required this.lastSync,
-    required this.onPairedChanged,
   });
 
   @override
@@ -826,13 +794,50 @@ class _BandSheet extends StatefulWidget {
 }
 
 class _BandSheetState extends State<_BandSheet> {
-  late bool _paired = widget.paired;
   late String _lastSync = widget.lastSync;
   bool _syncing = false;
+  bool _connectionActionRunning = false;
+
+  Future<void> _toggleConnection() async {
+    if (_connectionActionRunning || widget.service.isBusy) return;
+
+    setState(() => _connectionActionRunning = true);
+    try {
+      if (widget.service.isConnected) {
+        await widget.service.disconnect();
+      } else {
+        await widget.service.connectToBand();
+      }
+
+      if (!mounted) return;
+      final error = widget.service.error;
+      if (error != null && error.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Band connection failed: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _connectionActionRunning = false);
+    }
+  }
 
   Future<void> _sync() async {
+    if (!widget.service.isConnected || _syncing) return;
     setState(() => _syncing = true);
-    await Future.delayed(const Duration(milliseconds: 1400));
+    // The current VitalsService has no separate sync command. A successful
+    // BLE connection already streams live readings from the band.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     if (!mounted) return;
     setState(() {
       _syncing = false;
@@ -859,97 +864,65 @@ class _BandSheetState extends State<_BandSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return _SheetFrame(
-      title: 'Band',
-      child: Column(
-        children: [
-          _info('Status', _paired ? 'Paired' : 'Not paired'),
-          _info('Battery', _paired ? '${widget.battery}%' : '--'),
-          _info('Last sync', _paired ? _lastSync : '--'),
-          const SizedBox(height: 14),
-          Row(
+    return AnimatedBuilder(
+      animation: widget.service,
+      builder: (context, _) {
+        final connected = widget.service.isConnected;
+        final busy = widget.service.isBusy || _connectionActionRunning;
+        final status = connected
+            ? 'Paired'
+            : (busy ? 'Connecting…' : 'Not paired');
+
+        return _SheetFrame(
+          title: 'Band',
+          child: Column(
             children: [
-              Expanded(
-                child: _PillButton(
-                  label: 'Sync now',
-                  loading: _syncing,
-                  enabled: _paired && !_syncing,
-                  onTap: _sync,
+              _info('Status', status),
+              _info('Last sync', connected ? _lastSync : '--'),
+              if (widget.service.error != null &&
+                  widget.service.error!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    widget.service.error!,
+                    style: const TextStyle(
+                      color: _C.danger,
+                      fontSize: 12,
+                      height: 1.35,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _PillButton(
-                  label: _paired ? 'Unpair' : 'Pair band',
-                  filled: false,
-                  onTap: () {
-                    setState(() => _paired = !_paired);
-                    widget.onPairedChanged(_paired);
-                  },
-                ),
+              ],
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _PillButton(
+                      label: 'Sync now',
+                      loading: _syncing,
+                      enabled: connected && !_syncing,
+                      onTap: _sync,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _PillButton(
+                      label: busy
+                          ? 'Connecting…'
+                          : (connected ? 'Unpair' : 'Pair band'),
+                      filled: false,
+                      loading: busy,
+                      enabled: !busy,
+                      onTap: _toggleConnection,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Health data access toggles.
-class _HealthSheet extends StatefulWidget {
-  final Map<String, bool> values;
-  final void Function(String key, bool value) onChanged;
-
-  const _HealthSheet({required this.values, required this.onChanged});
-
-  @override
-  State<_HealthSheet> createState() => _HealthSheetState();
-}
-
-class _HealthSheetState extends State<_HealthSheet> {
-  late final Map<String, bool> _v = Map<String, bool>.from(widget.values);
-
-  @override
-  Widget build(BuildContext context) {
-    return _SheetFrame(
-      title: 'Health data access',
-      child: Column(
-        children: [
-          for (final e in _v.entries)
-            _RowTap(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                setState(() => _v[e.key] = !e.value);
-                widget.onChanged(e.key, _v[e.key]!);
-              },
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        e.key,
-                        style: const TextStyle(
-                          color: _C.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    _Toggle(value: e.value),
-                  ],
-                ),
-              ),
-            ),
-          const SizedBox(height: 14),
-          _PillButton(
-            label: 'Done',
-            onTap: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

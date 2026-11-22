@@ -99,12 +99,12 @@ class AudioController extends ChangeNotifier {
   /// Bundled Library tracks. Add these files to assets/audio/ and register
   /// that directory in pubspec.yaml. The filenames are intentionally stable.
   final List<AudioTrack> library = const [
-    AudioTrack(id: 'lib_rain', title: 'Rain on Leaves', category: 'Nature', seconds: 480, assetPath: 'assets/audio/rain_on_leaves.mp3'),
-    AudioTrack(id: 'lib_dawn', title: 'Forest Dawn', category: 'Nature', seconds: 390, assetPath: 'assets/audio/forest_dawn.mp3'),
-    AudioTrack(id: 'lib_stream', title: 'Stream Hush', category: 'Nature', seconds: 600, assetPath: 'assets/audio/stream_hush.mp3'),
-    AudioTrack(id: 'lib_bamboo', title: 'Wind in Bamboo', category: 'Ambient', seconds: 435, assetPath: 'assets/audio/wind_in_bamboo.mp3'),
-    AudioTrack(id: 'lib_birds', title: 'Morning Birdsong', category: 'Nature', seconds: 555, assetPath: 'assets/audio/morning_birdsong.mp3'),
-    AudioTrack(id: 'lib_thunder', title: 'Soft Thunder', category: 'Ambient', seconds: 720, assetPath: 'assets/audio/soft_thunder.mp3'),
+    AudioTrack(id: 'lib_rain', title: 'Rain on Leaves', category: 'Nature', seconds: 480, assetPath: 'assets/audio/rain_on_leaves.mpeg'),
+    AudioTrack(id: 'lib_dawn', title: 'Forest Dawn', category: 'Nature', seconds: 390, assetPath: 'assets/audio/forest_dawn.mpeg'),
+    AudioTrack(id: 'lib_stream', title: 'Stream Hush', category: 'Nature', seconds: 600, assetPath: 'assets/audio/stream_hush.mpeg'),
+    AudioTrack(id: 'lib_bamboo', title: 'Wind in Bamboo', category: 'Ambient', seconds: 435, assetPath: 'assets/audio/wind_in_bamboo.mpeg'),
+    AudioTrack(id: 'lib_birds', title: 'Morning Birdsong', category: 'Nature', seconds: 555, assetPath: 'assets/audio/morning_birdsong.mpeg'),
+    AudioTrack(id: 'lib_thunder', title: 'Soft Thunder', category: 'Ambient', seconds: 720, assetPath: 'assets/audio/soft_thunder.mpeg'),
   ];
 
   final List<AudioTrack> imported = [];

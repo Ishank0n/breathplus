@@ -243,6 +243,24 @@ import 'package:video_player/video_player.dart';
     void initState() {
       super.initState();
       _selectedFlower = _defaultFlower();
+
+      // Start each breathing session with a randomly selected preset sound.
+      // Avoid repeating the currently playing track when alternatives exist.
+      final availableTracks = audio.library;
+      if (availableTracks.isNotEmpty) {
+        final alternatives = availableTracks.length > 1
+            ? availableTracks
+                .where((track) => track.id != audio.current?.id)
+                .toList()
+            : availableTracks;
+        final randomTrack = alternatives[
+            math.Random().nextInt(alternatives.length)];
+        _sessionTrack = randomTrack;
+        if (audio.current?.id != randomTrack.id || !audio.isPlaying) {
+          unawaited(audio.toggle(randomTrack));
+        }
+      }
+
       _setupFlowerVideo();
       _phases = widget.technique.phases.isNotEmpty
           ? widget.technique.phases.map((p) {
@@ -302,9 +320,17 @@ import 'package:video_player/video_player.dart';
     /// quietly in the background.
     void _onBand() {
       final reading = _band.latest;
-      if (reading == null) return;
 
-      final phase = reading.phase.toLowerCase();
+      // Connection changes can notify listeners before the first sensor
+      // reading arrives. Rebuild so the live-state label updates immediately.
+      if (reading == null) {
+        if (mounted) {
+          setState(() => _liveBreathingPhase = null);
+        }
+        return;
+      }
+
+      final phase = reading.phase.trim().toLowerCase();
       double? target;
       if (phase == 'inhale') {
         target = 1.0;
@@ -319,10 +345,19 @@ import 'package:video_player/video_player.dart';
 
       if (!mounted) return;
       setState(() {
-        if (phase == 'inhale' || phase == 'exhale' || phase == 'hold') {
+        if (const {
+          'inhale',
+          'exhale',
+          'hold',
+          'hold_in',
+          'hold_out',
+          'none',
+          'unknown',
+        }.contains(phase)) {
           _liveBreathingPhase = phase;
         }
-        // During a hold, keep the last measured expansion level.
+        // During a hold or when the sensor has no phase, keep the last
+        // measured expansion level.
         if (target != null) _userBreathScale = target;
       });
     }
@@ -772,13 +807,18 @@ import 'package:video_player/video_player.dart';
                       ),
                     ),
                   )
-                : Text(
-                    _selectedFlower.emoji,
-                    key: ValueKey(
-                      _flowerVideoFailed ? 'flower-video-fallback' : _selectedFlower.id,
-                    ),
-                    style: TextStyle(fontSize: diameter * 0.43),
-                  ),
+                : _flowerVideoFailed
+                    ? const Icon(
+                        Icons.local_florist_rounded,
+                        key: ValueKey('flower-video-fallback'),
+                        color: AppColors.mint,
+                        size: 64,
+                      )
+                    : const SizedBox(
+                        key: ValueKey('flower-video-loading'),
+                        width: 1,
+                        height: 1,
+                      ),
           ),
         ),
       );
@@ -830,13 +870,21 @@ import 'package:video_player/video_player.dart';
           .clamp(0.0, 1.0)
           .toDouble();
       final stateLabel = live
-          ? _liveBreathingPhase == 'inhale'
-              ? 'Inhaling'
-              : _liveBreathingPhase == 'exhale'
-                  ? 'Exhaling'
-                  : 'Holding'
+          ? switch (_liveBreathingPhase) {
+              'inhale' => 'Inhaling',
+              'exhale' => 'Exhaling',
+              'hold' || 'hold_in' || 'hold_out' => 'Holding',
+              'none' => 'No skin contact',
+              _ => 'Waiting for breath',
+            }
           : phase.action;
-      final stateHint = live ? 'Following your breathing' : phase.hint;
+      final stateHint = live
+          ? switch (_liveBreathingPhase) {
+              'none' => 'Adjust the band so it makes contact with your skin',
+              'unknown' => 'The band is connected but has not detected a breathing phase',
+              _ => 'Live state from your breathing band',
+            }
+          : phase.hint;
 
       return Padding(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),

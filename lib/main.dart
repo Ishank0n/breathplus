@@ -394,29 +394,45 @@ enum TechniqueStatus { notCollected, collected, grown }
 
 enum PlantType { spiky, purple, bush, mushroom }
 
-// Keep this list and hash identical to SessionPage so each technique has
-// the same default flower everywhere in the app.
-const List<String> _techniqueFlowers = [
-  '🌹', // Rose
-  '🌻', // Sunflower
-  '🌷', // Tulip
-  '🌼', // Daisy
-  '🌸', // Cherry Blossom
-  '🪻', // Lavender
-  '🌺', // Hibiscus
-  '💮', // Blossom
-  '🪷', // Lotus
-];
+// Use the same plant assets as the Garden page. The API's plant_key is
+// carried on Technique so every breathing exercise displays its own plant.
+const Map<String, String> _techniquePlantImages = {
+  'sunflower': 'assets/images/plants/sunflower.png',
+  'periwinkle': 'assets/images/plants/periwinkle.png',
+  'bhrama': 'assets/images/plants/bhrama.png',
+  'rose': 'assets/images/plants/rose.png',
+  'tulips': 'assets/images/plants/tulips.png',
+  'dhalia': 'assets/images/plants/dhalia.png',
+  'orchids': 'assets/images/plants/orchids.png',
+  'daisy': 'assets/images/plants/daisy.png',
+  'forget_me_not': 'assets/images/plants/forget_me_not.png',
+};
 
-String _flowerForTechnique(Technique technique) {
-  final key = technique.slug ??
-      technique.id?.toString() ??
-      technique.name;
-  var hash = 0;
-  for (final code in key.codeUnits) {
-    hash = (hash * 31 + code) & 0x7fffffff;
+String? _plantAssetForKey(String? plantKey) {
+  final key = (plantKey ?? '')
+      .trim()
+      .toLowerCase()
+      .replaceAll(' ', '_')
+      .replaceAll('-', '_');
+  return _techniquePlantImages[key];
+}
+
+Widget _techniquePlantImage(String? plantKey, {double size = 44}) {
+  final assetPath = _plantAssetForKey(plantKey);
+  if (assetPath == null) {
+    return Icon(Icons.local_florist, size: size * 0.7, color: AppColors.mint);
   }
-  return _techniqueFlowers[hash % _techniqueFlowers.length];
+  return Image.asset(
+    assetPath,
+    width: size,
+    height: size,
+    fit: BoxFit.contain,
+    errorBuilder: (_, __, ___) => Icon(
+      Icons.broken_image_outlined,
+      size: size * 0.7,
+      color: AppColors.mintText,
+    ),
+  );
 }
 
 int _minutesFromSeconds(int seconds) => math.max(1, (seconds / 60).round());
@@ -463,6 +479,7 @@ class Technique {
   // Filled in when the data comes from the API.
   final int? id;
   final String? slug;
+  final String? plantKey;
   final String? description;
   final List<ApiPhase> phases;
   final bool isFinalStage; // "flourishing": the plant can't grow further
@@ -483,6 +500,7 @@ class Technique {
     this.goal = 10,
     this.id,
     this.slug,
+    this.plantKey,
     this.description,
     this.phases = const [],
     this.isFinalStage = false,
@@ -496,6 +514,7 @@ class Technique {
     return Technique(
       id: t.id,
       slug: t.slug,
+      plantKey: t.plantKey,
       name: t.name,
       description: t.description,
       pattern: t.pattern,
@@ -514,6 +533,7 @@ class Technique {
   factory Technique.fromSession(ApiSession s) => Technique(
         id: s.techniqueId,
         slug: s.techniqueSlug,
+        plantKey: s.techniquePlantKey,
         name: s.techniqueName,
         pattern: s.pattern,
         minutes: _minutesFromSeconds(s.targetDurationSec),
@@ -536,6 +556,7 @@ class Technique {
         goal: goal,
         id: id ?? s.techniqueId,
         slug: slug ?? s.techniqueSlug,
+        plantKey: plantKey ?? s.techniquePlantKey,
         description: description,
         phases: s.phases,
         isFinalStage: isFinalStage,
@@ -550,11 +571,9 @@ class Technique {
       case TechniqueStatus.notCollected:
         return '$base · Not collected yet';
       case TechniqueStatus.collected:
-        return '$base · Collected · $progress/$goal to grow';
+        return '$base · Collected';
       case TechniqueStatus.grown:
-        return isFinalStage
-            ? '$base · Flourishing'
-            : '$base · Grown · $progress/$goal to next';
+        return isFinalStage ? '$base · Flourishing' : '$base · Grown';
     }
   }
 }
@@ -1432,7 +1451,7 @@ class _HomePageState extends State<HomePage>
           const SizedBox(height: 10),
           Row(
             children: [
-              Text(_flowerForTechnique(t), style: const TextStyle(fontSize: 42)),
+              _techniquePlantImage(t.plantKey, size: 52),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1749,10 +1768,7 @@ class _TechniqueTile extends StatelessWidget {
             ),
             child: Opacity(
               opacity: locked ? 0.4 : 1,
-              child: Text(
-                _flowerForTechnique(technique),
-                style: const TextStyle(fontSize: 34),
-              ),
+              child: _techniquePlantImage(technique.plantKey, size: 46),
             ),
           ),
           const SizedBox(width: 14),
