@@ -851,8 +851,8 @@ import 'package:video_player/video_player.dart';
       final phaseProgress = inPhase / phase.seconds;
       final secondsLeft = (phase.seconds - inPhase).ceil().clamp(0, phase.seconds);
 
-      // Guided animation is the fallback. When the band is live, its
-      // inhale/exhale readings control the flower's breathing motion.
+      // The flower follows the guided exercise, not the band's detected
+      // phase. This keeps the instruction and measured performance distinct.
       final eased = Curves.easeInOut.transform(phaseProgress);
       double guideScale;
       if (phase.label == 'Inhale') {
@@ -863,30 +863,28 @@ import 'package:video_player/video_player.dart';
         final prev = _phases[(idx - 1 + _phases.length) % _phases.length];
         guideScale = prev.label == 'Inhale' ? 1.0 : _minScale;
       }
-
-      final live = _band.isLive && _liveBreathingPhase != null;
-      final displayedScale = live ? _userBreathScale : guideScale;
-      final breathLevel = ((displayedScale - _minScale) / (1 - _minScale))
+      final breathLevel = ((guideScale - _minScale) / (1 - _minScale))
           .clamp(0.0, 1.0)
           .toDouble();
-      final stateLabel = live
-          ? switch (_liveBreathingPhase) {
-              'inhale' => 'Inhaling',
-              'exhale' => 'Exhaling',
-              'hold' || 'hold_in' || 'hold_out' => 'Holding',
-              'none' => 'No skin contact',
-              _ => 'Waiting for breath',
-            }
-          : phase.action;
-      final stateHint = live
-          ? switch (_liveBreathingPhase) {
-              'none' => 'Adjust the band so it makes contact with your skin',
-              'unknown' => 'The band is connected but has not detected a breathing phase',
-              _ => 'Live state from your breathing band',
-            }
-          : phase.hint;
 
-      return Padding(
+      final reading = _band.latest;
+      final bandConnected = _band.isConnected;
+      final bandLive = _band.isLive && reading != null;
+      final actualPhase = !bandConnected
+          ? 'Band disconnected'
+          : !bandLive
+              ? 'Waiting for band data'
+              : switch (reading.phase.trim().toLowerCase()) {
+                  'inhale' => 'Inhaling',
+                  'exhale' => 'Exhaling',
+                  'hold' || 'hold_in' || 'hold_out' => 'Holding',
+                  'none' => 'No skin contact',
+                  _ => 'Detecting breathing',
+                };
+
+      String metric(double value, String suffix) =>
+          value > 0 ? '${value.toStringAsFixed(value == value.roundToDouble() ? 0 : 1)}$suffix' : '--';
+            return Padding(
         padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
         child: Column(
           children: [
@@ -960,7 +958,7 @@ import 'package:video_player/video_player.dart';
                     child: TweenAnimationBuilder<double>(
                       tween: Tween<double>(
                         begin: _minScale,
-                        end: displayedScale,
+                        end: guideScale,
                       ),
                       duration: const Duration(milliseconds: 850),
                       curve: Curves.easeInOut,
@@ -971,73 +969,141 @@ import 'package:video_player/video_player.dart';
               ),
             ),
 
-            // Live breathing state and fill meter are positioned at the bottom.
+            // What the user should be doing: this meter follows the
+            // breathing pattern and the flower above.
             _SessionCard(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 13),
+              padding: const EdgeInsets.fromLTRB(13, 10, 13, 11),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Expanded(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 220),
-                          child: Text(
-                            stateLabel,
-                            key: ValueKey(stateLabel),
-                            style: const TextStyle(
-                              fontFamily: kSerif,
-                              fontFamilyFallback: kSerifFallback,
-                              fontSize: 21,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.white,
-                            ),
-                          ),
+                      const Text(
+                        'YOUR GUIDE',
+                        style: TextStyle(
+                          color: AppColors.mintText,
+                          fontSize: 9.5,
+                          letterSpacing: 1.1,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
+                      const Spacer(),
                       Text(
                         '${secondsLeft}s',
                         style: const TextStyle(
                           color: AppColors.mintText,
-                          fontSize: 13,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    stateHint,
-                    style: const TextStyle(
-                      color: AppColors.mintText,
-                      fontSize: 12,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${phase.label} · ${phase.hint}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                     child: LinearProgressIndicator(
                       value: breathLevel,
-                      minHeight: 12,
+                      minHeight: 7,
                       backgroundColor: const Color(0xFF2E6B52),
                       valueColor: const AlwaysStoppedAnimation<Color>(AppColors.mint),
                     ),
                   ),
-                  if (!_band.isLive) ...[
-                    const SizedBox(height: 5),
-                    const Text(
-                      'Guided breathing',
-                      style: TextStyle(
-                        color: AppColors.mintText,
-                        fontSize: 10.5,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 7),
+
+            // What the band actually detects: never drives the guide meter.
+            _SessionCard(
+              padding: const EdgeInsets.fromLTRB(13, 9, 13, 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'FROM YOUR BAND',
+                        style: TextStyle(
+                          color: AppColors.mintText,
+                          fontSize: 9.5,
+                          letterSpacing: 1.1,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: bandLive ? AppColors.mint : Colors.orangeAccent,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        bandLive ? 'LIVE' : bandConnected ? 'CONNECTED' : 'OFFLINE',
+                        style: const TextStyle(
+                          color: AppColors.mintText,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          actualPhase,
+                          style: const TextStyle(
+                            color: AppColors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (reading != null && bandLive) ...[
+                        _BandMetric(label: 'BPM', value: metric(reading.heartRate, '')),
+                        const SizedBox(width: 12),
+                        _BandMetric(label: 'SpO₂', value: metric(reading.spo2, '%')),
+                        const SizedBox(width: 12),
+                        _BandMetric(label: 'HRV', value: metric(reading.hrv, '')),
+                      ],
+                    ],
+                  ),
+                  if (reading?.demo == true && bandLive)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 3),
+                      child: Text(
+                        'Demo sensor readings',
+                        style: TextStyle(color: AppColors.mintText, fontSize: 9),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 7),
 
             // Music selector is the final control at the bottom of the page.
             _buildMusicCard(),
@@ -1050,6 +1116,38 @@ import 'package:video_player/video_player.dart';
   /// ---------------------------------------------------------------------------
   /// WIDGETS
   /// ---------------------------------------------------------------------------
+  class _BandMetric extends StatelessWidget {
+    final String label;
+    final String value;
+
+    const _BandMetric({required this.label, required this.value});
+
+    @override
+    Widget build(BuildContext context) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppColors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.mintText,
+              fontSize: 8.5,
+            ),
+          ),
+        ],
+      );
+    }
+  }
+
   class _SessionCard extends StatelessWidget {
     final Widget child;
     final EdgeInsets padding;
